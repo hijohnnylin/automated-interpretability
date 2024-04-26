@@ -3,7 +3,7 @@ name = "automated-interpretability"
 version = "0.0.1"
 description = ""
 authors = ["OpenAI"]
-packages = [{include = "neuron_explainer"}]
+packages = [{include = "neuron-explainer"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
