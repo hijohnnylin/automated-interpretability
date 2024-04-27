@@ -53,6 +53,7 @@ def _remove_final_period(text: str) -> str:
 class ContextSize(int, Enum):
     TWO_K = 2049
     FOUR_K = 4097
+    SIXTEEN_K = 16384
 
     @classmethod
     def from_int(cls, i: int) -> ContextSize:
@@ -92,7 +93,9 @@ class NeuronExplainer(ABC):
         self.model_name = model_name
         self.prompt_format = prompt_format
         self.context_size = context_size
-        self.client = ApiClient(model_name=model_name, max_concurrent=max_concurrent, cache=cache)
+        self.client = ApiClient(
+            model_name=model_name, max_concurrent=max_concurrent, cache=cache
+        )
 
     async def generate_explanations(
         self,
@@ -104,7 +107,9 @@ class NeuronExplainer(ABC):
         **prompt_kwargs: Any,
     ) -> list[Any]:
         """Generate explanations based on subclass-specific input data."""
-        prompt = self.make_explanation_prompt(max_tokens_for_completion=max_tokens, **prompt_kwargs)
+        prompt = self.make_explanation_prompt(
+            max_tokens_for_completion=max_tokens, **prompt_kwargs
+        )
 
         generate_kwargs: dict[str, Any] = {
             "n": num_samples,
@@ -126,7 +131,10 @@ class NeuronExplainer(ABC):
 
         if self.prompt_format == PromptFormat.HARMONY_V4:
             explanations = [x["message"]["content"] for x in response["choices"]]
-        elif self.prompt_format in [PromptFormat.NONE, PromptFormat.INSTRUCTION_FOLLOWING]:
+        elif self.prompt_format in [
+            PromptFormat.NONE,
+            PromptFormat.INSTRUCTION_FOLLOWING,
+        ]:
             explanations = [x["text"] for x in response["choices"]]
         else:
             raise ValueError(f"Unhandled prompt format {self.prompt_format}")
@@ -134,7 +142,9 @@ class NeuronExplainer(ABC):
         return self.postprocess_explanations(explanations, prompt_kwargs)
 
     @abstractmethod
-    def make_explanation_prompt(self, **kwargs: Any) -> Union[str, list[HarmonyMessage]]:
+    def make_explanation_prompt(
+        self, **kwargs: Any
+    ) -> Union[str, list[HarmonyMessage]]:
         """
         Create a prompt to send to the API to generate one or more explanations.
 
@@ -192,9 +202,13 @@ class TokenActivationPairExplainer(NeuronExplainer):
         self.few_shot_example_set = few_shot_example_set
         self.repeat_non_zero_activations = repeat_non_zero_activations
 
-    def make_explanation_prompt(self, **kwargs: Any) -> Union[str, list[HarmonyMessage]]:
+    def make_explanation_prompt(
+        self, **kwargs: Any
+    ) -> Union[str, list[HarmonyMessage]]:
         original_kwargs = kwargs.copy()
-        all_activation_records: Sequence[ActivationRecord] = kwargs.pop("all_activation_records")
+        all_activation_records: Sequence[ActivationRecord] = kwargs.pop(
+            "all_activation_records"
+        )
         max_activation: float = kwargs.pop("max_activation")
         kwargs.setdefault("numbered_list_of_n_explanations", None)
         numbered_list_of_n_explanations: Optional[int] = kwargs.pop(
@@ -236,7 +250,9 @@ class TokenActivationPairExplainer(NeuronExplainer):
                 # Drop the last activation record for this few-shot example to save tokens, assuming
                 # there are at least two activation records.
                 if len(few_shot_activation_records) > 1:
-                    print(f"Warning: omitting activation record from few-shot example {i}")
+                    print(
+                        f"Warning: omitting activation record from few-shot example {i}"
+                    )
                     few_shot_activation_records = few_shot_activation_records[:-1]
                     num_omitted_activation_records += 1
             self._add_per_neuron_explanation_prompt(
@@ -251,9 +267,11 @@ class TokenActivationPairExplainer(NeuronExplainer):
             prompt_builder,
             # If we're using a 2k context window, we only have room for two of the activation
             # records.
-            all_activation_records[:2]
-            if self.context_size == ContextSize.TWO_K
-            else all_activation_records,
+            (
+                all_activation_records[:2]
+                if self.context_size == ContextSize.TWO_K
+                else all_activation_records
+            ),
             len(few_shot_examples),
             max_activation,
             numbered_list_of_n_explanations=numbered_list_of_n_explanations,
@@ -331,7 +349,9 @@ Activations:{format_activation_records(activation_records, max_activation, omit_
         self, completions: list[str], prompt_kwargs: dict[str, Any]
     ) -> list[Any]:
         """Postprocess the explanations returned by the API"""
-        numbered_list_of_n_explanations = prompt_kwargs.get("numbered_list_of_n_explanations")
+        numbered_list_of_n_explanations = prompt_kwargs.get(
+            "numbered_list_of_n_explanations"
+        )
         if numbered_list_of_n_explanations is None:
             return completions
         else:
@@ -376,7 +396,9 @@ class TokenSpaceRepresentationExplainer(NeuronExplainer):
         self.output_numbered_list = output_numbered_list
         if self.use_few_shot:
             assert few_shot_example_set is not None
-            self.few_shot_examples: Optional[TokenSpaceFewShotExampleSet] = few_shot_example_set
+            self.few_shot_examples: Optional[TokenSpaceFewShotExampleSet] = (
+                few_shot_example_set
+            )
         else:
             self.few_shot_examples = None
         self.prompt_prefix = (
@@ -386,7 +408,9 @@ class TokenSpaceRepresentationExplainer(NeuronExplainer):
             "looking for. Don't list examples of words."
         )
 
-    def make_explanation_prompt(self, **kwargs: Any) -> Union[str, list[HarmonyMessage]]:
+    def make_explanation_prompt(
+        self, **kwargs: Any
+    ) -> Union[str, list[HarmonyMessage]]:
         tokens: list[str] = kwargs.pop("tokens")
         max_tokens_for_completion = kwargs.pop("max_tokens_for_completion")
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
@@ -399,10 +423,14 @@ class TokenSpaceRepresentationExplainer(NeuronExplainer):
         prompt_builder.add_message(Role.SYSTEM, self.prompt_prefix)
         if self.use_few_shot:
             self._add_few_shot_examples(prompt_builder)
-        self._add_neuron_specific_prompt(prompt_builder, stringified_tokens, explanation=None)
+        self._add_neuron_specific_prompt(
+            prompt_builder, stringified_tokens, explanation=None
+        )
 
         if self._prompt_is_too_long(prompt_builder, max_tokens_for_completion):
-            raise ValueError(f"Prompt too long: {prompt_builder.build(self.prompt_format)}")
+            raise ValueError(
+                f"Prompt too long: {prompt_builder.build(self.prompt_format)}"
+            )
         else:
             return prompt_builder.build(self.prompt_format)
 
@@ -415,7 +443,9 @@ class TokenSpaceRepresentationExplainer(NeuronExplainer):
         assert self.few_shot_examples is not None
         few_shot_example_list = self.few_shot_examples.get_examples()
         if self.output_numbered_list:
-            raise NotImplementedError("Numbered list output not supported for few-shot examples")
+            raise NotImplementedError(
+                "Numbered list output not supported for few-shot examples"
+            )
         else:
             for few_shot_example in few_shot_example_list:
                 self._add_neuron_specific_prompt(
