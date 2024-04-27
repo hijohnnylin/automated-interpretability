@@ -20,7 +20,10 @@ from neuron_explainer.activations.activation_records import (
 from neuron_explainer.activations.activations import ActivationRecord
 from neuron_explainer.api_client import ApiClient
 from neuron_explainer.explanations.explainer import EXPLANATION_PREFIX
-from neuron_explainer.explanations.explanations import ActivationScale, SequenceSimulation
+from neuron_explainer.explanations.explanations import (
+    ActivationScale,
+    SequenceSimulation,
+)
 from neuron_explainer.explanations.few_shot_examples import FewShotExampleSet
 from neuron_explainer.explanations.prompt_builder import (
     HarmonyMessage,
@@ -34,12 +37,15 @@ logger = logging.getLogger(__name__)
 # Our prompts use normalized activation values, which map any range of positive activations to the
 # integers from 0 to 10.
 MAX_NORMALIZED_ACTIVATION = 10
-VALID_ACTIVATION_TOKENS_ORDERED = list(str(i) for i in range(MAX_NORMALIZED_ACTIVATION + 1))
+VALID_ACTIVATION_TOKENS_ORDERED = list(
+    str(i) for i in range(MAX_NORMALIZED_ACTIVATION + 1)
+)
 VALID_ACTIVATION_TOKENS = set(VALID_ACTIVATION_TOKENS_ORDERED)
 
 # Edge Case #3: The chat-based simulator is confused by end token. Replace it with a "not end token"
 END_OF_TEXT_TOKEN = "<|endoftext|>"
 END_OF_TEXT_TOKEN_REPLACEMENT = "<|not_endoftext|>"
+
 
 class SimulationType(str, Enum):
     """How to simulate neuron activations. Values correspond to subclasses of NeuronSimulator."""
@@ -153,7 +159,9 @@ def handle_byte_encoding(
     return response_token, merged_response_index
 
 
-def was_token_split(current_token: str, response_tokens: Sequence[str], start_index: int) -> bool:
+def was_token_split(
+    current_token: str, response_tokens: Sequence[str], start_index: int
+) -> bool:
     """
     Return whether current_token (a token from the subject model) was split into multiple tokens by
     the simulator model (as represented by the tokens in response_tokens). start_index is the index
@@ -225,7 +233,9 @@ def parse_simulation_response(
         if len(original_sequence_tokens) == len(tokens):
             # Make sure we haven't hit some sort of off-by-one error.
             # TODO(sbills): Generalize this to handle different tokenizers.
-            reached_end = response_tokens[i + 1] == "<" and response_tokens[i + 2] == "end"
+            reached_end = (
+                response_tokens[i + 1] == "<" and response_tokens[i + 2] == "end"
+            )
             assert reached_end, f"{response_tokens[i-3:i+3]}"
             break
         if token_text_offset[i] >= scoring_start:
@@ -235,7 +245,9 @@ def parse_simulation_response(
             # as a token, in which case we should move on to the next response token.
             if response_tokens[i - 1] == "\t":
                 if response_tokens[i] != "unknown":
-                    logger.debug("Ignoring tab token that is not followed by an 'unknown' token.")
+                    logger.debug(
+                        "Ignoring tab token that is not followed by an 'unknown' token."
+                    )
                     continue
 
                 # j represents the index of the token in a "token<tab>activation" line, barring
@@ -280,7 +292,9 @@ def parse_simulation_response(
                     expected_value = 0.0
 
                 original_sequence_tokens.append(current_token)
-                distribution_values.append([float(v) for v in current_distribution_values])
+                distribution_values.append(
+                    [float(v) for v in current_distribution_values]
+                )
                 distribution_probabilities.append(current_distribution_probabilities)
                 expected_values.append(expected_value)
 
@@ -354,7 +368,9 @@ class ExplanationNeuronSimulator(NeuronSimulator):
     # TODO(sbills): The current token<tab>activation format can result in improper tokenization.
     # In particular, if the token is itself a tab, we may get a single "\t\t" token rather than two
     # "\t" tokens. Consider using a separator that does not appear in any multi-character tokens.
-    def make_simulation_prompt(self, tokens: Sequence[str]) -> Union[str, list[HarmonyMessage]]:
+    def make_simulation_prompt(
+        self, tokens: Sequence[str]
+    ) -> Union[str, list[HarmonyMessage]]:
         """Create a few-shot prompt for predicting neuron activations for the given tokens."""
 
         # TODO(sbills): The prompts in this file are subtly different from the ones in explainer.py.
@@ -393,7 +409,8 @@ The activation format is token<tab>activation, activations go from 0 to 10, "unk
             f"{self.explanation.strip()}",
         )
         prompt_builder.add_message(
-            Role.ASSISTANT, f"\nActivations: {format_sequences_for_simulation([tokens])}"
+            Role.ASSISTANT,
+            f"\nActivations: {format_sequences_for_simulation([tokens])}",
         )
         return prompt_builder.build(self.prompt_format)
 
@@ -432,7 +449,9 @@ class ExplanationTokenByTokenSimulator(NeuronSimulator):
     ) -> SequenceSimulation:
         responses_by_token = await asyncio.gather(
             *[
-                self._get_activation_stats_for_single_token(tokens, self.explanation, token_index)
+                self._get_activation_stats_for_single_token(
+                    tokens, self.explanation, token_index
+                )
                 for token_index in range(len(tokens))
             ]
         )
@@ -507,10 +526,12 @@ Last token activation, considering the token in the context in which it appeared
         )
         if not end_of_prompt:
             normalized_activations = normalize_activations(
-                trimmed_activation_record.activations, calculate_max_activation([activation_record])
+                trimmed_activation_record.activations,
+                calculate_max_activation([activation_record]),
             )
             prompt_builder.add_message(
-                Role.ASSISTANT, str(normalized_activations[-1]) + ("" if end_of_prompt else "\n\n")
+                Role.ASSISTANT,
+                str(normalized_activations[-1]) + ("" if end_of_prompt else "\n\n"),
             )
 
     def make_single_token_simulation_prompt(
@@ -553,7 +574,9 @@ The activation format is token<tab>activation, and activations range from 0 to 1
             "Now, we're going predict the activation of a new neuron on a single token, "
             "following the same rules as the examples above. Activations still range from 0 to 10.",
         )
-        single_token_example = self.few_shot_example_set.get_single_token_prediction_example()
+        single_token_example = (
+            self.few_shot_example_set.get_single_token_prediction_example()
+        )
         assert single_token_example.token_index_to_score is not None
         self._add_single_token_simulation_subprompt(
             prompt_builder,
@@ -565,7 +588,9 @@ The activation format is token<tab>activation, and activations range from 0 to 1
         )
 
         activation_record = ActivationRecord(
-            tokens=list(tokens[: token_index_to_score + 1]),  # ActivationRecord expects List type.
+            tokens=list(
+                tokens[: token_index_to_score + 1]
+            ),  # ActivationRecord expects List type.
             activations=[0.0] * len(tokens),
         )
         self._add_single_token_simulation_subprompt(
@@ -576,7 +601,9 @@ The activation format is token<tab>activation, and activations range from 0 to 1
             token_index_to_score,
             end_of_prompt=True,
         )
-        return prompt_builder.build(self.prompt_format, allow_extra_system_messages=True)
+        return prompt_builder.build(
+            self.prompt_format, allow_extra_system_messages=True
+        )
 
 
 def _format_record_for_logprob_free_simulation(
@@ -604,6 +631,7 @@ def _format_record_for_logprob_free_simulation(
             response += f"{token}\t༗\n"
     return response
 
+
 def _format_record_for_logprob_free_simulation_json(
     explanation: str,
     activation_record: ActivationRecord,
@@ -613,16 +641,24 @@ def _format_record_for_logprob_free_simulation_json(
         assert len(activation_record.tokens) == len(
             activation_record.activations
         ), f"{len(activation_record.tokens)=}, {len(activation_record.activations)=}"
-    return json.dumps({
-        "to_find": explanation,
-        "document": "".join(activation_record.tokens),
-        "activations": [
-            {
-                "token": token,
-                "activation": activation_record.activations[i] if include_activations else None
-            } for i, token in enumerate(activation_record.tokens)
-        ]
-    })
+    return json.dumps(
+        {
+            "to_find": explanation,
+            "document": "".join(activation_record.tokens),
+            "activations": [
+                {
+                    "token": token,
+                    "activation": (
+                        activation_record.activations[i]
+                        if include_activations
+                        else None
+                    ),
+                }
+                for i, token in enumerate(activation_record.tokens)
+            ],
+        }
+    )
+
 
 def _parse_no_logprobs_completion_json(
     completion: str,
@@ -646,44 +682,85 @@ def _parse_no_logprobs_completion_json(
     try:
         completion = json.loads(completion)
         if "activations" not in completion:
-            logger.error("The key 'activations' is not in the completion:\n%s\nExpected Tokens:\n%s", json.dumps(completion), tokens)
+            logger.error(
+                "The key 'activations' is not in the completion:\n%s\nExpected Tokens:\n%s",
+                json.dumps(completion),
+                tokens,
+            )
             return zero_prediction
         activations = completion["activations"]
         if len(activations) != len(tokens):
-            logger.error("Tokens and activations length did not match:\n%s\nExpected Tokens:\n%s", json.dumps(completion), tokens)
+            logger.error(
+                "Tokens and activations length did not match:\n%s\nExpected Tokens:\n%s",
+                json.dumps(completion),
+                tokens,
+            )
             return zero_prediction
         predicted_activations = []
         # check that there is a token and activation value
         # no need to double check the token matches exactly
         for i, activation in enumerate(activations):
             if "token" not in activation:
-                logger.error("The key 'token' is not in activation:\n%s\nCompletion:%s\nExpected Tokens:\n%s", activation, json.dumps(completion), tokens)
+                logger.error(
+                    "The key 'token' is not in activation:\n%s\nCompletion:%s\nExpected Tokens:\n%s",
+                    activation,
+                    json.dumps(completion),
+                    tokens,
+                )
                 predicted_activations.append(0)
                 continue
             if "activation" not in activation:
-                logger.error("The key 'activation' is not in activation:\n%s\nCompletion:%s\nExpected Tokens:\n%s", activation, json.dumps(completion), tokens)
+                logger.error(
+                    "The key 'activation' is not in activation:\n%s\nCompletion:%s\nExpected Tokens:\n%s",
+                    activation,
+                    json.dumps(completion),
+                    tokens,
+                )
                 predicted_activations.append(0)
                 continue
             # Ensure activation value is between 0-10 inclusive
             try:
                 predicted_activation_float = float(activation["activation"])
-                if predicted_activation_float < 0 or predicted_activation_float > MAX_NORMALIZED_ACTIVATION:
-                    logger.error("activation value out of range: %s\nCompletion:%s\nExpected Tokens:\n%s", predicted_activation_float, json.dumps(completion), tokens)
+                if (
+                    predicted_activation_float < 0
+                    or predicted_activation_float > MAX_NORMALIZED_ACTIVATION
+                ):
+                    logger.error(
+                        "activation value out of range: %s\nCompletion:%s\nExpected Tokens:\n%s",
+                        predicted_activation_float,
+                        json.dumps(completion),
+                        tokens,
+                    )
                     predicted_activations.append(0)
                 else:
                     predicted_activations.append(predicted_activation_float)
             except ValueError:
-                logger.error("activation value invalid: %s\nCompletion:%s\nExpected Tokens:\n%s", activation["activation"], json.dumps(completion), tokens)
+                logger.error(
+                    "activation value invalid: %s\nCompletion:%s\nExpected Tokens:\n%s",
+                    activation["activation"],
+                    json.dumps(completion),
+                    tokens,
+                )
                 predicted_activations.append(0)
             except TypeError:
-                logger.error("activation value incorrect type: %s\nCompletion:%s\nExpected Tokens:\n%s", activation["activation"], json.dumps(completion), tokens)
+                logger.error(
+                    "activation value incorrect type: %s\nCompletion:%s\nExpected Tokens:\n%s",
+                    activation["activation"],
+                    json.dumps(completion),
+                    tokens,
+                )
                 predicted_activations.append(0)
         logger.debug("predicted activations: %s", predicted_activations)
         return predicted_activations
-    
+
     except json.JSONDecodeError:
-        logger.error("Failed to parse completion JSON:\n%s\nExpected Tokens:\n%s", completion, tokens)
+        logger.warning(
+            "Failed to parse completion JSON:\n%s\nExpected Tokens:\n%s",
+            completion,
+            tokens,
+        )
         return zero_prediction
+
 
 def _parse_no_logprobs_completion(
     completion: str,
@@ -714,12 +791,16 @@ def _parse_no_logprobs_completion(
 
     start_line_index = None
     for i, token_line in enumerate(token_lines):
-        if (token_line.startswith(f"{tokens[0]}\t")
+        if (
+            token_line.startswith(f"{tokens[0]}\t")
             # Edge Case #1: GPT often omits the space before the first token.
             # Allow the returned token line to be either " token" or "token".
             or f" {token_line}".startswith(f"{tokens[0]}\t")
             # Edge Case #3: Allow our "not end token" replacement
-            or (token_line.startswith(END_OF_TEXT_TOKEN_REPLACEMENT) and tokens[0].strip() == END_OF_TEXT_TOKEN)
+            or (
+                token_line.startswith(END_OF_TEXT_TOKEN_REPLACEMENT)
+                and tokens[0].strip() == END_OF_TEXT_TOKEN
+            )
         ):
             logger.debug("start_line_index is: %s", start_line_index)
             logger.debug("matched token %s with token_line %s", tokens[0], token_line)
@@ -729,19 +810,26 @@ def _parse_no_logprobs_completion(
     # If we didn't find the first token, or if the number of lines in the completion doesn't match
     # the number of tokens, return a list of 0s.
     if start_line_index is None or len(token_lines) - start_line_index != len(tokens):
-        logger.debug("didn't find first token or number of lines didn't match, returning all zeroes")
+        logger.debug(
+            "didn't find first token or number of lines didn't match, returning all zeroes"
+        )
         return zero_prediction
-    
+
     predicted_activations = []
     for i, token_line in enumerate(token_lines[start_line_index:]):
-        if (not token_line.startswith(f"{tokens[i]}\t")
+        if (
+            not token_line.startswith(f"{tokens[i]}\t")
             # Edge Case #1: GPT often omits the space before the token.
             # Allow the returned token line to be either " token" or "token".
             and not f" {token_line}".startswith(f"{tokens[i]}\t")
             # Edge Case #3: Allow our "not end token" replacement
             and not token_line.startswith(END_OF_TEXT_TOKEN_REPLACEMENT)
         ):
-            logger.debug("failed to match token %s with token_line %s, returning all zeroes", tokens[i], token_line)
+            logger.debug(
+                "failed to match token %s with token_line %s, returning all zeroes",
+                tokens[i],
+                token_line,
+            )
             return zero_prediction
         predicted_activation_split = token_line.split("\t")
         # Ensure token line has correct size after splitting. If not then assume it's a zero.
@@ -754,8 +842,13 @@ def _parse_no_logprobs_completion(
         # In all cases if the activation is not numerically parseable, set it to 0
         try:
             predicted_activation_float = float(predicted_activation)
-            if predicted_activation_float < 0 or predicted_activation_float > MAX_NORMALIZED_ACTIVATION:
-                logger.debug("activation value out of range: %s", predicted_activation_float)
+            if (
+                predicted_activation_float < 0
+                or predicted_activation_float > MAX_NORMALIZED_ACTIVATION
+            ):
+                logger.debug(
+                    "activation value out of range: %s", predicted_activation_float
+                )
                 predicted_activations.append(0)
             else:
                 predicted_activations.append(predicted_activation_float)
@@ -764,6 +857,7 @@ def _parse_no_logprobs_completion(
             predicted_activations.append(0)
     logger.debug("predicted activations: %s", predicted_activations)
     return predicted_activations
+
 
 class LogprobFreeExplanationTokenSimulator(NeuronSimulator):
     """
@@ -856,7 +950,9 @@ class LogprobFreeExplanationTokenSimulator(NeuronSimulator):
             assert len(response["choices"]) == 1
             choice = response["choices"][0]
             completion = choice["message"]["content"]
-            predicted_activations = _parse_no_logprobs_completion_json(completion, tokens)
+            predicted_activations = _parse_no_logprobs_completion_json(
+                completion, tokens
+            )
         else:
             prompt = self._make_simulation_prompt(
                 tokens,
@@ -916,7 +1012,11 @@ Fill out the activation values from 0 to 10. Please think carefully.";
             """
             prompt_builder.add_message(
                 Role.USER,
-                _format_record_for_logprob_free_simulation_json(explanation=example.explanation, activation_record=example.activation_records[0], include_activations=False)
+                _format_record_for_logprob_free_simulation_json(
+                    explanation=example.explanation,
+                    activation_record=example.activation_records[0],
+                    include_activations=False,
+                ),
             )
             """
             {
@@ -932,7 +1032,11 @@ Fill out the activation values from 0 to 10. Please think carefully.";
             """
             prompt_builder.add_message(
                 Role.ASSISTANT,
-                _format_record_for_logprob_free_simulation_json(explanation=example.explanation, activation_record=example.activation_records[0], include_activations=True)
+                _format_record_for_logprob_free_simulation_json(
+                    explanation=example.explanation,
+                    activation_record=example.activation_records[0],
+                    include_activations=True,
+                ),
             )
         """
         {
@@ -948,9 +1052,15 @@ Fill out the activation values from 0 to 10. Please think carefully.";
         """
         prompt_builder.add_message(
             Role.USER,
-            _format_record_for_logprob_free_simulation_json(explanation=explanation, activation_record=ActivationRecord(tokens=tokens, activations=[]), include_activations=False)
+            _format_record_for_logprob_free_simulation_json(
+                explanation=explanation,
+                activation_record=ActivationRecord(tokens=tokens, activations=[]),
+                include_activations=False,
+            ),
         )
-        return prompt_builder.build(self.prompt_format, allow_extra_system_messages=True)
+        return prompt_builder.build(
+            self.prompt_format, allow_extra_system_messages=True
+        )
 
     def _make_simulation_prompt(
         self,
@@ -971,7 +1081,9 @@ For each sequence, you will see the tokens in the sequence where the activations
 
         few_shot_examples = self.few_shot_example_set.get_examples()
         for i, example in enumerate(few_shot_examples):
-            few_shot_example_max_activation = calculate_max_activation(example.activation_records)
+            few_shot_example_max_activation = calculate_max_activation(
+                example.activation_records
+            )
 
             prompt_builder.add_message(
                 Role.USER,
@@ -1004,4 +1116,6 @@ For each sequence, you will see the tokens in the sequence where the activations
             f"Sequence 1 Tokens without Activations:\n{_format_record_for_logprob_free_simulation(ActivationRecord(tokens=tokens, activations=[]), include_activations=False)}\n\n"
             f"Sequence 1 Tokens with Activations:\n",
         )
-        return prompt_builder.build(self.prompt_format, allow_extra_system_messages=True)
+        return prompt_builder.build(
+            self.prompt_format, allow_extra_system_messages=True
+        )
