@@ -80,18 +80,10 @@ def exponential_backoff(
     return decorate
 
 
-API_KEY = os.getenv("OPENAI_API_KEY")
-assert API_KEY, "Please set the OPENAI_API_KEY environment variable"
-API_HTTP_HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer " + API_KEY,
-}
-BASE_API_URL = "https://api.openai.com/v1"
-
-
 class ApiClient:
     """Performs inference using the OpenAI API. Supports response caching and concurrency limits."""
 
+    BASE_API_URL = "https://api.openai.com/v1"
     def __init__(
         self,
         model_name: str,
@@ -116,6 +108,10 @@ class ApiClient:
     async def make_request(
         self, timeout_seconds: Optional[int] = None, json_mode: Optional[bool] = False, **kwargs: Any
     ) -> dict[str, Any]:
+        api_http_headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + os.getenv("OPENAI_API_KEY"),
+        }
         if self._cache is not None:
             key = orjson.dumps(kwargs)
             if key in self._cache:
@@ -128,11 +124,11 @@ class ApiClient:
             )
             # If the request has a "messages" key, it should be sent to the /chat/completions
             # endpoint. Otherwise, it should be sent to the /completions endpoint.
-            url = BASE_API_URL + ("/chat/completions" if "messages" in kwargs else "/completions")
+            url = ApiClient.BASE_API_URL + ("/chat/completions" if "messages" in kwargs else "/completions")
             kwargs["model"] = self.model_name
             if json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
-            response = await http_client.post(url, headers=API_HTTP_HEADERS, json=kwargs)
+            response = await http_client.post(url, headers=api_http_headers, json=kwargs)
         # The response json has useful information but the exception doesn't include it, so print it
         # out then reraise.
         try:
