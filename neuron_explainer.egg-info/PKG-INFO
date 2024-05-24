@@ -1,0 +1,15 @@
+Metadata-Version: 2.1
+Name: neuron_explainer
+Version: 0.0.4
+Home-page: 
+Author: OpenAI
+Requires-Python: >=3.9
+License-File: LICENSE
+Requires-Dist: httpx>=0.22
+Requires-Dist: scikit-learn
+Requires-Dist: boostedblob>=0.13.0
+Requires-Dist: tiktoken
+Requires-Dist: blobfile
+Requires-Dist: numpy
+Requires-Dist: pytest
+Requires-Dist: orjson

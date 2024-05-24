@@ -1,5 +1,7 @@
 # Automated interpretability
 
+This is a fork of OpenAI's `automated-interpretability` [here](https://github.com/openai/automated-interpretability). The README below has not been updated.
+
 ## Code and tools
 
 This repository contains code and tools associated with the [Language models can explain neurons in

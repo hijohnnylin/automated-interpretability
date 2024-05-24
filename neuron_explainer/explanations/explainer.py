@@ -49,11 +49,12 @@ def _remove_final_period(text: str) -> str:
         return text[:-2]
     return text
 
-
+# TODO: should pull from API and/or combine with the HARMONY_V4_MODELS
 class ContextSize(int, Enum):
     TWO_K = 2049
     FOUR_K = 4097
     SIXTEEN_K = 16384
+    ONETWENTYEIGHT_K = 128000
 
     @classmethod
     def from_int(cls, i: int) -> ContextSize:
@@ -62,10 +63,13 @@ class ContextSize(int, Enum):
                 return context_size
         raise ValueError(f"{i} is not a valid ContextSize")
 
-
+# TODO: should pull these from API
 HARMONY_V4_MODELS = [
     "gpt-3.5-turbo",
     "gpt-4",
+    "gpt-4o",
+    "gpt-4-turbo",
+    "gpt-4o-2024-05-13",
     "gpt-4-1106-preview",
     "gpt-4-turbo-2024-04-09",
 ]

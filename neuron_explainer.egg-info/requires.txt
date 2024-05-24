@@ -1,0 +1,8 @@
+httpx>=0.22
+scikit-learn
+boostedblob>=0.13.0
+tiktoken
+blobfile
+numpy
+pytest
+orjson
