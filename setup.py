@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="neuron_explainer",
     packages=find_packages(),
-    version="0.0.4",
+    version="0.0.6",
     author="OpenAI",
     install_requires=[
         "httpx>=0.22",
@@ -17,5 +17,5 @@ setup(
     ],
     url="",
     description="",
-    python_requires='>=3.9',
+    python_requires=">=3.9",
 )

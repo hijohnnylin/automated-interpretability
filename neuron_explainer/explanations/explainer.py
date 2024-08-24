@@ -49,6 +49,7 @@ def _remove_final_period(text: str) -> str:
         return text[:-2]
     return text
 
+
 # TODO: should pull from API and/or combine with the HARMONY_V4_MODELS
 class ContextSize(int, Enum):
     TWO_K = 2049
@@ -62,6 +63,7 @@ class ContextSize(int, Enum):
             if context_size.value == i:
                 return context_size
         raise ValueError(f"{i} is not a valid ContextSize")
+
 
 # TODO: should pull these from API
 HARMONY_V4_MODELS = [
@@ -88,16 +90,16 @@ class NeuronExplainer(ABC):
         # This parameter lets us adjust the length of the prompt when we're generating explanations
         # using older models with shorter context windows. In the future we can use it to experiment
         # with longer context windows.
-        context_size: ContextSize = ContextSize.FOUR_K,
+        context_size: ContextSize = ContextSize.ONETWENTYEIGHT_K,
         max_concurrent: Optional[int] = 10,
         cache: bool = False,
     ):
-        if prompt_format == PromptFormat.HARMONY_V4:
-            assert model_name in HARMONY_V4_MODELS
-        elif prompt_format in [PromptFormat.NONE, PromptFormat.INSTRUCTION_FOLLOWING]:
+        # if prompt_format == PromptFormat.HARMONY_V4:
+        #     assert model_name in HARMONY_V4_MODELS
+        if prompt_format in [PromptFormat.NONE, PromptFormat.INSTRUCTION_FOLLOWING]:
             assert model_name not in HARMONY_V4_MODELS
-        else:
-            raise ValueError(f"Unhandled prompt format {prompt_format}")
+        # else:
+        #     raise ValueError(f"Unhandled prompt format {prompt_format}")
 
         self.model_name = model_name
         self.prompt_format = prompt_format
@@ -195,7 +197,7 @@ class TokenActivationPairExplainer(NeuronExplainer):
         # This parameter lets us adjust the length of the prompt when we're generating explanations
         # using older models with shorter context windows. In the future we can use it to experiment
         # with 8k+ context windows.
-        context_size: ContextSize = ContextSize.FOUR_K,
+        context_size: ContextSize = ContextSize.ONETWENTYEIGHT_K,
         few_shot_example_set: FewShotExampleSet = FewShotExampleSet.ORIGINAL,
         repeat_non_zero_activations: bool = True,
         max_concurrent: Optional[int] = 10,
