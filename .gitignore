@@ -1,2 +1,8 @@
 .DS_Store
 dist/
+
+__pycache__/
+
+build/
+
+exampletest.py

@@ -21,6 +21,8 @@ class ActivationRecord(FastDataclass):
     """Tokens in the text sequence, represented as strings."""
     activations: List[float]
     """Raw activation values for the neuron on each token in the text sequence."""
+    dfa_values: Optional[List[int]] = None
+    dfa_target_index: Optional[int] = None
 
 
 @register_dataclass
@@ -51,7 +53,10 @@ def _check_slices(
     ), f"{sum_of_slice_lengths=} != {expected_num_values=}"
     stride = n_splits
     expected_indices = set.union(
-        *[set(range(start_index, expected_num_values, stride)) for start_index in range(n_splits)]
+        *[
+            set(range(start_index, expected_num_values, stride))
+            for start_index in range(n_splits)
+        ]
     )
     assert indices == expected_indices, f"{indices=} != {expected_indices=}"
 
@@ -113,7 +118,9 @@ class NeuronRecord(FastDataclass):
     skewness: Optional[float] = math.nan
     kurtosis: Optional[float] = math.nan
 
-    most_positive_activation_records: list[ActivationRecord] = field(default_factory=list)
+    most_positive_activation_records: list[ActivationRecord] = field(
+        default_factory=list
+    )
     """
     Activation records with the most positive figure of merit value for this neuron over all dataset
     examples.
@@ -122,7 +129,9 @@ class NeuronRecord(FastDataclass):
     @property
     def max_activation(self) -> float:
         """Return the maximum activation value over all top-activating activation records."""
-        return max([max(ar.activations) for ar in self.most_positive_activation_records])
+        return max(
+            [max(ar.activations) for ar in self.most_positive_activation_records]
+        )
 
     def _get_top_activation_slices(
         self, activation_record_slice_params: ActivationRecordSliceParams
@@ -130,8 +139,12 @@ class NeuronRecord(FastDataclass):
         splits = ["train", "calibration", "valid", "test"]
         n_examples_per_split = activation_record_slice_params.n_examples_per_split
         if n_examples_per_split is None:
-            n_examples_per_split = len(self.most_positive_activation_records) // len(splits)
-        assert len(self.most_positive_activation_records) >= n_examples_per_split * len(splits)
+            n_examples_per_split = len(self.most_positive_activation_records) // len(
+                splits
+            )
+        assert len(self.most_positive_activation_records) >= n_examples_per_split * len(
+            splits
+        )
         return get_slices_for_splits(splits, n_examples_per_split)
 
     def _get_random_activation_slices(
@@ -169,10 +182,14 @@ class NeuronRecord(FastDataclass):
         """
         return (
             self.most_positive_activation_records[
-                self._get_top_activation_slices(activation_record_slice_params)["calibration"]
+                self._get_top_activation_slices(activation_record_slice_params)[
+                    "calibration"
+                ]
             ]
             + self.random_sample[
-                self._get_random_activation_slices(activation_record_slice_params)["calibration"]
+                self._get_random_activation_slices(activation_record_slice_params)[
+                    "calibration"
+                ]
             ]
         )
 
@@ -190,7 +207,9 @@ class NeuronRecord(FastDataclass):
                 self._get_top_activation_slices(activation_record_slice_params)["valid"]
             ]
             + self.random_sample[
-                self._get_random_activation_slices(activation_record_slice_params)["valid"]
+                self._get_random_activation_slices(activation_record_slice_params)[
+                    "valid"
+                ]
             ]
         )
 
@@ -207,7 +226,9 @@ class NeuronRecord(FastDataclass):
                 self._get_top_activation_slices(activation_record_slice_params)["test"]
             ]
             + self.random_sample[
-                self._get_random_activation_slices(activation_record_slice_params)["test"]
+                self._get_random_activation_slices(activation_record_slice_params)[
+                    "test"
+                ]
             ]
         )
 
@@ -260,11 +281,17 @@ async def read_neuron_file(neuron_filename: str) -> NeuronRecord:
     return neuron_record
 
 
-def get_sorted_neuron_indices(dataset_path: str, layer_index: Union[str, int]) -> List[int]:
+def get_sorted_neuron_indices(
+    dataset_path: str, layer_index: Union[str, int]
+) -> List[int]:
     """Returns the indices of all neurons in this layer, in ascending order."""
     layer_dir = bf.join(dataset_path, "neurons", str(layer_index))
     return sorted(
-        [int(f.split(".")[0]) for f in bf.listdir(layer_dir) if f.split(".")[0].isnumeric()]
+        [
+            int(f.split(".")[0])
+            for f in bf.listdir(layer_dir)
+            if f.split(".")[0].isnumeric()
+        ]
     )
 
 
@@ -275,6 +302,10 @@ def get_sorted_layers(dataset_path: str) -> List[str]:
     return [
         str(x)
         for x in sorted(
-            [int(x) for x in bf.listdir(bf.join(dataset_path, "neurons")) if x.isnumeric()]
+            [
+                int(x)
+                for x in bf.listdir(bf.join(dataset_path, "neurons"))
+                if x.isnumeric()
+            ]
         )
     ]

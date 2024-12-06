@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "automated-interpretability"
-version = "0.0.6"
+version = "0.0.7"
 description = "OpenAI's implementation of automated-interpretability, with some updates. Not officially affiliated with OpenAI."
 authors = ["OpenAI"]
 packages = [{ include = "neuron_explainer" }]

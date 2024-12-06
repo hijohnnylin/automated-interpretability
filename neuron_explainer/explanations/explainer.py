@@ -8,14 +8,23 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Sequence, Union
 
+import numpy as np
+
 from neuron_explainer.activations.activation_records import (
     calculate_max_activation,
     format_activation_records,
     non_zero_activation_proportion,
 )
 from neuron_explainer.activations.activations import ActivationRecord
+from neuron_explainer.activations.attention_utils import (
+    convert_flattened_index_to_unflattened_index,
+)
 from neuron_explainer.api_client import ApiClient
-from neuron_explainer.explanations.few_shot_examples import FewShotExampleSet
+from neuron_explainer.explanations.few_shot_examples import (
+    ATTENTION_HEAD_FEW_SHOT_EXAMPLES,
+    AttentionTokenPairExample,
+    FewShotExampleSet,
+)
 from neuron_explainer.explanations.prompt_builder import (
     HarmonyMessage,
     PromptBuilder,
@@ -27,6 +36,8 @@ from neuron_explainer.explanations.token_space_few_shot_examples import (
 )
 
 logger = logging.getLogger(__name__)
+ATTENTION_EXPLANATION_PREFIX = "this attention head"
+ATTENTION_SEQUENCE_SEPARATOR = "<|sequence_separator|>"
 
 
 # TODO(williamrs): This prefix may not work well for some things, like predicting the next token.
@@ -511,3 +522,243 @@ class TokenSpaceRepresentationExplainer(NeuronExplainer):
         else:
             # Each element in the top-level list will be an explanation as a string.
             return [_remove_final_period(explanation) for explanation in completions]
+
+
+def format_attention_head_token_pairs(
+    token_pair_examples: list[AttentionTokenPairExample], omit_zeros: bool = False
+) -> str:
+    if omit_zeros:
+        return ", ".join(
+            [
+                ", ".join(
+                    [
+                        f"({example.tokens[coords[1]]}, {example.tokens[coords[0]]})"
+                        for coords in example.token_pair_coordinates
+                    ]
+                )
+                for example in token_pair_examples
+            ]
+        )
+    else:
+        return f"\n{ATTENTION_SEQUENCE_SEPARATOR}\n".join(
+            [
+                f"\n{ATTENTION_SEQUENCE_SEPARATOR}\n".join(
+                    [
+                        f"{format_attention_head_token_pair_string(example.tokens, coords)}"
+                        for coords in example.token_pair_coordinates
+                    ]
+                )
+                for example in token_pair_examples
+            ]
+        )
+
+
+def format_attention_head_token_pair_string(
+    token_list: list[str], pair_coordinates: tuple[int, int]
+) -> str:
+    def format_activated_token(i: int, token: str) -> str:
+        if i == pair_coordinates[0] and i == pair_coordinates[1]:
+            return f"[[**{token}**]]"  # from and to
+        if i == pair_coordinates[0]:
+            return f"[[{token}]]"  # from
+        if i == pair_coordinates[1]:
+            return f"**{token}**"  # to
+        return token
+
+    return "".join(
+        [format_activated_token(i, token) for i, token in enumerate(token_list)]
+    )
+
+
+def get_top_attention_coordinates(
+    activation_records: list[ActivationRecord], top_k: int = 5
+) -> list[tuple[int, float, tuple[int, int]]]:
+    candidates = []
+    for i, record in enumerate(activation_records):
+        top_activation_flat_indices = np.argsort(record.activations)[::-1][:top_k]
+        top_vals: list[float] = [
+            record.activations[idx] for idx in top_activation_flat_indices
+        ]
+        top_coordinates = [
+            convert_flattened_index_to_unflattened_index(flat_index)
+            for flat_index in top_activation_flat_indices
+        ]
+        candidates.extend(
+            [(i, top_val, coords) for top_val, coords in zip(top_vals, top_coordinates)]
+        )
+    return sorted(candidates, key=lambda x: x[1], reverse=True)[:top_k]
+
+
+class AttentionHeadExplainer(NeuronExplainer):
+    """
+    Generate explanations of attention head behavior using a prompt with lists of
+    strongly attending to/from token pairs.
+    Takes in NeuronRecord's corresponding to a single attention head. Extracts strongly
+    activating to/from token pairs.
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        prompt_format: PromptFormat = PromptFormat.HARMONY_V4,
+        # This parameter lets us adjust the length of the prompt when we're generating explanations
+        # using older models with shorter context windows. In the future we can use it to experiment
+        # with 8k+ context windows.
+        context_size: ContextSize = ContextSize.ONETWENTYEIGHT_K,
+        repeat_strongly_attending_pairs: bool = False,
+        max_concurrent: int | None = 10,
+        cache: bool = False,
+    ):
+        super().__init__(
+            model_name=model_name,
+            prompt_format=prompt_format,
+            max_concurrent=max_concurrent,
+            cache=cache,
+        )
+        assert (
+            context_size != ContextSize.TWO_K
+        ), "2k context size not supported for attention explanation"
+        self.context_size = context_size
+        self.repeat_strongly_attending_pairs = repeat_strongly_attending_pairs
+
+    def make_explanation_prompt(self, **kwargs: Any) -> str | list[HarmonyMessage]:
+        original_kwargs = kwargs.copy()
+        all_activation_records: list[ActivationRecord] = kwargs.pop(
+            "all_activation_records"
+        )
+        # This parameter lets us dynamically shrink the prompt if our initial attempt to create it
+        # results in something that's too long.
+        kwargs.setdefault("omit_n_token_pair_examples", 0)
+        omit_n_token_pair_examples: int = kwargs.pop("omit_n_token_pair_examples")
+
+        max_tokens_for_completion: int = kwargs.pop("max_tokens_for_completion")
+
+        kwargs.setdefault("num_top_pairs_to_display", 0)
+        num_top_pairs_to_display: int = kwargs.pop("num_top_pairs_to_display")
+
+        assert not kwargs, f"Unexpected kwargs: {kwargs}"
+
+        prompt_builder = PromptBuilder()
+        prompt_builder.add_message(
+            Role.SYSTEM,
+            "We're studying attention heads in a neural network. Each head looks at every pair of tokens "
+            "in a short token sequence and activates for pairs of tokens that fit what it is looking for. "
+            "Attention heads always attend from a token to a token earlier in the sequence (or from a "
+            'token to itself). We will display multiple instances of sequences with the "to" token '
+            'surrounded by double asterisks (e.g., **token**) and the "from" token surrounded by double '
+            "square brackets (e.g., [[token]]). If a token attends from itself to itself, it will be "
+            "surrounded by both (e.g., [[**token**]]). Look at the pairs of tokens the head activates for "
+            "and summarize in a single sentence what pattern the head is looking for. We do not display "
+            "every activating pair of tokens in a sequence; you must generalize from limited examples. "
+            "Remember, the head always attends to tokens earlier in the sentence (marked with ** **) from "
+            "tokens later in the sentence (marked with [[ ]]), except when the head attends from a token to "
+            'itself (marked with [[** **]]). The explanation takes the form: "This attention head attends '
+            "to {pattern of tokens marked with ** **, which appear earlier} from {pattern of tokens marked with "
+            '[[ ]], which appear later}." The explanation does not include any of the markers (** **, [[ ]]), '
+            f"as these are just for your reference. Sequences are separated by `{ATTENTION_SEQUENCE_SEPARATOR}`.",
+        )
+        num_omitted_token_pair_examples = 0
+        for i, few_shot_example in enumerate(ATTENTION_HEAD_FEW_SHOT_EXAMPLES):
+            few_shot_token_pair_examples = few_shot_example.token_pair_examples
+            if num_omitted_token_pair_examples < omit_n_token_pair_examples:
+                # Drop the last activation record for this few-shot example to save tokens, assuming
+                # there are at least two activation records.
+                if len(few_shot_token_pair_examples) > 1:
+                    print(
+                        f"Warning: omitting activation record from few-shot example {i}"
+                    )
+                    few_shot_token_pair_examples = few_shot_token_pair_examples[:-1]
+                    num_omitted_token_pair_examples += 1
+            few_shot_explanation: str = few_shot_example.explanation
+            self._add_per_head_explanation_prompt(
+                prompt_builder,
+                few_shot_token_pair_examples,
+                i,
+                explanation=few_shot_explanation,
+            )
+
+        # ================================
+        # Comment (Johnny): the original code does not seem to work (or I am not using it correctly?). Re-written below
+        # ================================
+        # # each element is (record_index, attention value, (from_token_index, to_token_index))
+        # coords = get_top_attention_coordinates(
+        #     all_activation_records, top_k=num_top_pairs_to_display
+        # )
+        # prompt_examples = {}
+        # for record_index, _, (from_token_index, to_token_index) in coords:
+        #     if record_index not in prompt_examples:
+        #         prompt_examples[record_index] = AttentionTokenPairExample(
+        #             tokens=all_activation_records[record_index].tokens,
+        #             token_pair_coordinates=[(from_token_index, to_token_index)],
+        #         )
+        #     else:
+        #         prompt_examples[record_index].token_pair_coordinates.append(
+        #             (from_token_index, to_token_index)
+        #         )
+        # current_head_token_pair_examples = list(prompt_examples.values())
+
+        # make list of attention token pair examples
+        attention_token_pair_examples = []
+        for i, activation_record in enumerate(all_activation_records):
+            # from (first value) is the dfaTargetIndex
+            from_index = activation_record.dfa_target_index
+            # to (second value) is the index of the max dfa
+            to_index = np.argmax(activation_record.dfa_values)
+            attention_token_pair_examples.append(
+                AttentionTokenPairExample(
+                    tokens=activation_record.tokens,
+                    token_pair_coordinates=[(from_index, to_index)],
+                )
+            )
+
+        self._add_per_head_explanation_prompt(
+            prompt_builder,
+            attention_token_pair_examples,
+            len(ATTENTION_HEAD_FEW_SHOT_EXAMPLES),
+            explanation=None,
+        )
+        # If the prompt is too long *and* we omitted the specified number of activation records, try
+        # again, omitting one more. (If we didn't make the specified number of omissions, we're out
+        # of opportunities to omit records, so we just return the prompt as-is.)
+        # if (
+        #     self._prompt_is_too_long(prompt_builder, max_tokens_for_completion)
+        #     and num_omitted_token_pair_examples == omit_n_token_pair_examples
+        # ):
+        #     original_kwargs["omit_n_token_pair_examples"] = (
+        #         omit_n_token_pair_examples + 1
+        #     )
+        #     return self.make_explanation_prompt(**original_kwargs)
+        return prompt_builder.build(self.prompt_format)
+
+    def _add_per_head_explanation_prompt(
+        self,
+        prompt_builder: PromptBuilder,
+        token_pair_examples: list[
+            AttentionTokenPairExample
+        ],  # each dict has keys "tokens" and "token_pair_coordinates"
+        index: int,
+        explanation: str | None,  # None means this is the end of the full prompt.
+    ) -> None:
+        user_message = f"""
+
+Attention head {index + 1}
+Activations:\n{format_attention_head_token_pairs(token_pair_examples, omit_zeros=False)}"""
+        if self.repeat_strongly_attending_pairs:
+            user_message += (
+                f"\nThe same list of strongly activating token pairs, presented as (to_token, from_token):"
+                f"{format_attention_head_token_pairs(token_pair_examples, omit_zeros=True)}"
+            )
+
+        user_message += f"\nExplanation of attention head {index + 1} behavior:"
+        assistant_message = ""
+        # For the IF format, we want <|endofprompt|> to come before the explanation prefix.
+        if self.prompt_format == PromptFormat.INSTRUCTION_FOLLOWING:
+            assistant_message += f" {ATTENTION_EXPLANATION_PREFIX}"
+        else:
+            user_message += f" {ATTENTION_EXPLANATION_PREFIX}"
+        prompt_builder.add_message(Role.USER, user_message)
+
+        if explanation is not None:
+            assistant_message += f" {explanation}."
+        if assistant_message:
+            prompt_builder.add_message(Role.ASSISTANT, assistant_message)
