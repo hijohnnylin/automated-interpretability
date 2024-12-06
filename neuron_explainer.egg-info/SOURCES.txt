@@ -13,6 +13,7 @@ neuron_explainer.egg-info/top_level.txt
 neuron_explainer/activations/__init__.py
 neuron_explainer/activations/activation_records.py
 neuron_explainer/activations/activations.py
+neuron_explainer/activations/attention_utils.py
 neuron_explainer/activations/token_connections.py
 neuron_explainer/explanations/__init__.py
 neuron_explainer/explanations/calibrated_simulator.py
