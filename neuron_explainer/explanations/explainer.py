@@ -104,6 +104,8 @@ class NeuronExplainer(ABC):
         context_size: ContextSize = ContextSize.ONETWENTYEIGHT_K,
         max_concurrent: Optional[int] = 10,
         cache: bool = False,
+        base_api_url: str = ApiClient.BASE_API_URL,
+        override_api_key: str | None = None,
     ):
         # if prompt_format == PromptFormat.HARMONY_V4:
         #     assert model_name in HARMONY_V4_MODELS
@@ -116,7 +118,11 @@ class NeuronExplainer(ABC):
         self.prompt_format = prompt_format
         self.context_size = context_size
         self.client = ApiClient(
-            model_name=model_name, max_concurrent=max_concurrent, cache=cache
+            model_name=model_name,
+            max_concurrent=max_concurrent,
+            cache=cache,
+            base_api_url=base_api_url,
+            override_api_key=override_api_key,
         )
 
     async def generate_explanations(
@@ -213,12 +219,16 @@ class TokenActivationPairExplainer(NeuronExplainer):
         repeat_non_zero_activations: bool = True,
         max_concurrent: Optional[int] = 10,
         cache: bool = False,
+        base_api_url: str = ApiClient.BASE_API_URL,
+        override_api_key: str | None = None,
     ):
         super().__init__(
             model_name=model_name,
             prompt_format=prompt_format,
             max_concurrent=max_concurrent,
             cache=cache,
+            base_api_url=base_api_url,
+            override_api_key=override_api_key,
         )
         self.context_size = context_size
         self.few_shot_example_set = few_shot_example_set
@@ -608,12 +618,16 @@ class AttentionHeadExplainer(NeuronExplainer):
         repeat_strongly_attending_pairs: bool = False,
         max_concurrent: int | None = 10,
         cache: bool = False,
+        base_api_url: str = ApiClient.BASE_API_URL,
+        override_api_key: str | None = None,
     ):
         super().__init__(
             model_name=model_name,
             prompt_format=prompt_format,
             max_concurrent=max_concurrent,
             cache=cache,
+            base_api_url=base_api_url,
+            override_api_key=override_api_key,
         )
         assert (
             context_size != ContextSize.TWO_K
