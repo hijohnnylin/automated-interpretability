@@ -1,6 +1,6 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: neuron_explainer
-Version: 0.0.7
+Version: 0.0.10
 Home-page: 
 Author: OpenAI
 Requires-Python: >=3.9
@@ -13,3 +13,7 @@ Requires-Dist: blobfile
 Requires-Dist: numpy
 Requires-Dist: pytest
 Requires-Dist: orjson
+Dynamic: author
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python

@@ -1,3 +1,4 @@
+# Edited examples - adds top_positive_logits to the examples
 # Few-shot examples for generating and simulating neuron explanations.
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ class Example(FastDataclass):
     If the prompt is used as an example for one-token-at-a-time scoring, this is the index of the
     token to score.
     """
+    top_positive_logits: Optional[List[str]] = None
 
 
 class FewShotExampleSet(Enum):
@@ -235,6 +237,18 @@ ORIGINAL_EXAMPLES = [
         ],
         first_revealed_activation_indices=[10, 3],
         explanation="present tense verbs ending in 'ing'",
+        top_positive_logits=[
+            " calling",
+            " sleeping",
+            " laughing",
+            " dancing",
+            " singing",
+            " frying",
+            " grounding",
+            " laying",
+            " eating",
+            " meeting",
+        ],
     ),
     Example(
         activation_records=[
@@ -369,6 +383,18 @@ ORIGINAL_EXAMPLES = [
         ],
         first_revealed_activation_indices=[5, 20],
         explanation="words related to physical medical conditions",
+        top_positive_logits=[
+            " fainting",
+            " bleed",
+            " stroke",
+            " hernia",
+            " disease",
+            " broken",
+            " cast",
+            " emergency",
+            " sprain",
+            " pain",
+        ],
     ),
     Example(
         activation_records=[
@@ -451,6 +477,18 @@ ORIGINAL_EXAMPLES = [
         ],
         first_revealed_activation_indices=[0, 10],
         explanation="phrases related to community",
+        top_positive_logits=[
+            " community",
+            " together",
+            " love",
+            " friendship",
+            " friendly",
+            " joint",
+            " peace",
+            " companion",
+            " team",
+            " sympathy",
+        ],
     ),
 ]
 
