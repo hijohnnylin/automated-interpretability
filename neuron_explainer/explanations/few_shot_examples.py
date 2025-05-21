@@ -42,6 +42,7 @@ class FewShotExampleSet(Enum):
     ORIGINAL = "original"
     NEWER = "newer"
     TEST = "test"
+    LOGITS = "logits"
     JL_FINE_TUNED = "jl_fine_tuned"
 
     @classmethod
@@ -55,6 +56,8 @@ class FewShotExampleSet(Enum):
         """Returns regular examples for use in a few-shot prompt."""
         if self is FewShotExampleSet.ORIGINAL:
             return ORIGINAL_EXAMPLES
+        elif self is FewShotExampleSet.LOGITS:
+            return LOGITS_EXAMPLES
         elif self is FewShotExampleSet.NEWER:
             return NEWER_EXAMPLES
         elif self is FewShotExampleSet.TEST:
@@ -488,6 +491,208 @@ ORIGINAL_EXAMPLES = [
             " companion",
             " team",
             " sympathy",
+        ],
+    ),
+]
+
+
+LOGITS_EXAMPLES = [
+    Example(
+        activation_records=[
+            ActivationRecord(
+                tokens=[
+                    "She",
+                    " was",
+                    " taking",
+                    " a",
+                    " nap",
+                    " when",
+                    " her",
+                    " phone",
+                    " started",
+                    " ringing",
+                    ".",
+                ],
+                activations=[8, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0],
+            ),
+            ActivationRecord(
+                tokens=[
+                    "I",
+                    " enjoy",
+                    " watching",
+                    " movies",
+                    " with",
+                    " my",
+                    " family",
+                    ".",
+                ],
+                activations=[0, 9, 0, 7.5, 0, 0, 0, 0],
+            ),
+        ],
+        first_revealed_activation_indices=[0, 1],
+        explanation="say word that starts with 'w'",
+        top_positive_logits=[
+            " walking",
+            " WA",
+            " waiting",
+            " was",
+            " we",
+            " WHAM",
+            " wish",
+            " win",
+            " wake",
+            " whisper",
+        ],
+    ),
+    Example(
+        activation_records=[
+            ActivationRecord(
+                tokens=[
+                    "The",
+                    " apple",
+                    " and",
+                    " banana",
+                    " are",
+                    " delicious",
+                    " foods",
+                    " that",
+                    " provide",
+                    " essential",
+                    " vitamins",
+                    " and",
+                    " nutrients",
+                    ".",
+                ],
+                activations=[0, 20, 0, 30, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            ),
+            ActivationRecord(
+                tokens=[
+                    "I",
+                    " enjoy",
+                    " eating",
+                    " fresh",
+                    " strawberries",
+                    ",",
+                    " blueberries",
+                    ",",
+                    " and",
+                    " mangoes",
+                    " during",
+                    " the",
+                    " summer",
+                    " months",
+                    ".",
+                ],
+                activations=[0, 0, 0, 0, 25, 0, 35, 0, 0, 15, 0, 0, 0, 0, 0],
+            ),
+        ],
+        first_revealed_activation_indices=[1, 4],
+        explanation="fruits",
+        top_positive_logits=[
+            " apple",
+            " orange",
+            " pineapple",
+            " watermelon",
+            " kiwi",
+            " peach",
+            " pear",
+            " grape",
+            " cherry",
+            " plum",
+        ],
+    ),
+    Example(
+        activation_records=[
+            ActivationRecord(
+                tokens=[
+                    "the",
+                    " number",
+                    " 4",
+                    " is",
+                    " my",
+                    " favorite",
+                    " digit",
+                    " in",
+                    " math",
+                    " class",
+                    " .",
+                ],
+                activations=[
+                    0,
+                    0,
+                    15,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
+            ),
+            ActivationRecord(
+                tokens=[
+                    "the",
+                    " four",
+                    " seasons",
+                    " of",
+                    " the",
+                    " year",
+                    " are",
+                    " winter",
+                    " ,",
+                    " spring",
+                    " ,",
+                    " summer",
+                    " ,",
+                    " and",
+                    " fall",
+                    " or",
+                    " autumn",
+                    " in",
+                    " some",
+                    " places",
+                    " .",
+                ],
+                activations=[
+                    0,
+                    20,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
+            ),
+        ],
+        first_revealed_activation_indices=[2, 1],
+        explanation="four",
+        top_positive_logits=[
+            " 4",
+            " four",
+            " fourth",
+            " 4th",
+            " IV",
+            " Four",
+            " FOUR",
+            " ~4",
+            " 4.0",
+            " quartet",
         ],
     ),
 ]
