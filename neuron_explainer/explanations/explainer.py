@@ -810,13 +810,22 @@ Activations:{format_activation_records(activation_records, max_activation, omit_
 
 class MaxActivationAndLogitsExplainer(NeuronExplainer):
     """
-    This is a very concise explainer that attempts to replicate Anthropic's attribution graphs explainer. It tries to explain features as one of these:
+    This is a very concise explainer (1 to 6 words) that attempts to replicate Anthropic's attribution graphs explainer.
+    It shows the model both activations and top positive logits.
+    This explainer is expected to be used for the last 1/3 of layers in a model, since it has heavy focus on predicting the next token.
+    This explainer's tries to explain using one of these options:
      - "say [the next predicted token after the max activating token]"
      - a brief description of the max activating token (which can simply be the max activating token itself)
      - a brief description of the top positive logits
      - a brief description of the top activating texts
 
     See make_explanation_prompt below for the full prompt.
+
+    A weakness of this explainer is that it is less good at explaining the whole context - more for immediate words/characters on or after the top activating token.
+    You can increase the "tokens_around_max_activating_token" to try to improve this behavior.
+
+    The explainer prompt is pretty verbose and repetitive. This may not be necessary and possibly we can condense it.
+    We mostly tested using this explainer with Gemini-2.0-Flash.
     """
 
     def __init__(
