@@ -810,31 +810,13 @@ Activations:{format_activation_records(activation_records, max_activation, omit_
 
 class MaxActivationAndLogitsExplainer(NeuronExplainer):
     """
-    This is a very concise explainer that attempts to replicate Anthropic's attribution graphs explainer. It tries to explain features as one of these three:
+    This is a very concise explainer that attempts to replicate Anthropic's attribution graphs explainer. It tries to explain features as one of these:
      - "say [the next predicted token after the max activating token]"
      - a brief description of the max activating token (which can simply be the max activating token itself)
      - a brief description of the top positive logits
+     - a brief description of the top activating texts
 
-    It is given these inputs:
-    1) TOP_ACTIVATING_TEXTS, which are top activating texts, with ^^ around the max activating token. (e.g. "The ^^dog^^ barks") These are trimmed to the 6 tokens around the max activating token.
-    2) TOKEN_AFTER_MAX_ACTIVATING_TOKEN, which is the token immediately after the max activating token.
-    3) TOP_POSITIVE_LOGITS, which are the top positive logits.
-
-    It is asked to use this logic:
-    1) Look at TOKEN_AFTER_MAX_ACTIVATING_TOKEN, along with the TOP_POSITIVE_LOGITS. Try to find a strong, specific pattern or similarity in these tokens. Examples of patterns: "starts with s", "the ending -ing", "number 8". Do not force a pattern if there is no specific one. For example, "unique words" is not a specific enough pattern, nor is "foreign words". If you found a pattern, respond with "say [the pattern]", and end here.
-    2) Look at the TOP_ACTIVATING_TEXTS, specifically the max activating token. If they are all similar in some way (for example, if they are all variations of a word), then describe it very briefly (1-3 words), and end here.
-    3) If step 1 and 2 didn't give you a clear answer, then look at the TOP_POSITIVE_LOGITS. If they are all similar in some way (for example, if they are all variations of a word), then describe it very briefly (1-3 words), and end here.
-
-    It is given these rules:
-    - Keep explanation concise, always under 6 words, and mostly 1 to 3 words
-    - Do not add unnecessary phrases like "words related to..." or "concepts related to..." or "variations of the word..."
-    - Do not mention "tokens" in the explanation
-    - Do not mention "patterns" in the explanation
-
-    Its explanation output is postprocessed by us:
-    - Strip an ending period if it exists.
-    - Strip the "this neuron activates for" prefix if it exists.
-    - Trim the output whitespace.
+    See make_explanation_prompt below for the full prompt.
     """
 
     def __init__(
@@ -977,6 +959,7 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
 
         prompt_builder = PromptBuilder()
+        # TODO: this is pretty verbose and can probably be shortened
         prompt_builder.add_message(
             Role.SYSTEM,
             "You are explaining the behavior of a neuron in a neural network. Your response should be a very concise explanation (1-6 words) that captures what the neuron detects or predicts.\n\n"
@@ -987,17 +970,17 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
             "4. Make a best guess by describing the broad theme or context in TOP_ACTIVATING_TEXTS, ignoring the max activating tokens.\n\n"
             "To determine your response, you are given four types of information:\n\n"
             "1. MAX_ACTIVATING_TOKENS, which are the top activating tokens in the top activating texts.\n"
-            "3. TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
+            "2. TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
             "3. TOP_POSITIVE_LOGITS, which are the most likely words or tokens associated with this neuron.\n"
-            "2. TOP_ACTIVATING_TEXTS, which are top activating texts.\n\n"
+            "4. TOP_ACTIVATING_TEXTS, which are top activating texts.\n\n"
             "How you should think, in order of priority:\n"
             "1. Look at the MAX_ACTIVATING_TOKENS. If they are all nearly identical, respond with that token. It's okay for them to be variations of the same token. But they must all match.\n"
             "2. Look at TOKENS_AFTER_MAX_ACTIVATING_TOKEN, along with the TOP_POSITIVE_LOGITS. Try to find a strong, specific pattern or similarity. If you find a pattern (like 'starts with s', 'the ending -ing', 'number 8'), respond with 'say [the pattern]' and end there. Do not force a pattern if there is no specific one. For example, \"unique words\" is not a specific enough pattern, nor is \"foreign words\". If you use \"say [the pattern]\", ALL of the tokens in the TOKENS_AFTER_MAX_ACTIVATING_TOKEN must match this pattern.\n"
             "3. Look at the TOP_POSITIVE_LOGITS for similarities and describe it very briefly (1-3 words).\n"
             "4. Look at the TOP_ACTIVATING_TEXTS and make a best guess by describing the broad theme or context, ignoring the max activating tokens.\n\n"
             "Keep your explanation extremely concise (1-6 words, mostly 1-3 words). Do not add unnecessary phrases like "
-            "'words related to...' or 'concepts related to...' or 'variations of the word...'. Do not mention 'tokens' or 'patterns' or include the ^^ marker "
-            "in your explanation. Only use the 'say [the pattern]' format for the first case above (involving the token after the max activating token), NOT for the other cases. If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n",
+            "'words related to...' or 'concepts related to...' or 'variations of the word...'. Do not mention 'tokens' or 'patterns' "
+            "in your explanation. Only use the 'say [the pattern]' format for the second case above (involving the token after the max activating token), NOT for the other cases. If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n",
         )
         few_shot_examples = self.few_shot_example_set.get_examples()
         num_omitted_activation_records = 0
