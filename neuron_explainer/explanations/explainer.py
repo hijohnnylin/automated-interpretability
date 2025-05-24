@@ -819,12 +819,13 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
      - a brief description of the top positive logits
      - a brief description of the top activating texts
 
+    We force the explainer to try and explain using each method, then return when an explanation is found. Forcing it to do this made the explanations much more accurate.
+
     See make_explanation_prompt below for the full prompt.
 
     A weakness of this explainer is that it is less good at explaining the whole context - more for immediate words/characters on or after the top activating token.
     You can increase the "tokens_around_max_activating_token" to try to improve this behavior.
 
-    The explainer prompt is pretty verbose and repetitive. This may not be necessary and possibly we can condense it.
     We mostly tested using this explainer with Gemini-2.0-Flash.
     """
 
@@ -867,7 +868,9 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
             max_activation_index = activations.index(max(activations))
             # Only get the first token after the max activating token
             if max_activation_index + 1 < len(tokens):
-                token_after_max_activating_token = tokens[max_activation_index + 1]
+                token_after_max_activating_token = (
+                    tokens[max_activation_index + 1].replace("\n", "").strip()
+                )
                 formatted_texts.append(f"{token_after_max_activating_token}")
             else:
                 # Handle case where max activation is the last token
@@ -885,7 +888,9 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
             tokens = record.tokens
             activations = record.activations
             max_activation_index = activations.index(max(activations))
-            max_activating_token = tokens[max_activation_index]
+            max_activating_token = (
+                tokens[max_activation_index].replace("\n", "").strip()
+            )
             formatted_tokens.append(f"{max_activating_token}")
         return "\n".join(formatted_tokens)
 
@@ -894,7 +899,7 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
     ) -> str:
         """
         Format activation records into a bullet point list of texts, with each text trimmed to
-        8 tokens to the left and right of the maximum activating token.
+        8 tokens to the left and right of the maximum activating token. Replace line breaks with two spaces.
         """
         formatted_texts = []
 
@@ -921,7 +926,7 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
                 + tokens[max_activation_index + 1 : end_index]
             )
 
-            trimmed_text = "".join(trimmed_tokens)
+            trimmed_text = "".join(trimmed_tokens).replace("\n", "  ")
             formatted_texts.append(f"{trimmed_text}")
 
         return "\n".join(formatted_texts)
@@ -951,7 +956,8 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
 
         # Replace all ▁ characters in top_positive_logits with spaces
         processed_top_positive_logits = [
-            logit.replace("▁", " ") for logit in top_positive_logits
+            logit.replace("▁", " ").replace("\n", "").strip()
+            for logit in top_positive_logits
         ]
         top_positive_logits = processed_top_positive_logits
         kwargs.setdefault("numbered_list_of_n_explanations", None)
@@ -971,25 +977,26 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
         # TODO: this is pretty verbose and can probably be shortened
         prompt_builder.add_message(
             Role.SYSTEM,
-            "You are explaining the behavior of a neuron in a neural network. Your response should be a very concise explanation (1-6 words) that captures what the neuron detects or predicts.\n\n"
-            "There are four ways to approach your explanation, in order of priority:\n\n"
-            "1. Look at the MAX_ACTIVATING_TOKENS and if they are all nearly identical, then respond with that token.\n"
-            "2. If you notice the neuron activates right before specific words or tokens, respond with 'say [the specific word, token or phrase]'\n"
-            "3. Look at the TOP_POSITIVE_LOGITS and briefly describe what they have in common\n"
-            "4. Make a best guess by describing the broad theme or context in TOP_ACTIVATING_TEXTS, ignoring the max activating tokens.\n\n"
-            "To determine your response, you are given four types of information:\n\n"
-            "1. MAX_ACTIVATING_TOKENS, which are the top activating tokens in the top activating texts.\n"
-            "2. TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
-            "3. TOP_POSITIVE_LOGITS, which are the most likely words or tokens associated with this neuron.\n"
-            "4. TOP_ACTIVATING_TEXTS, which are top activating texts.\n\n"
-            "How you should think, in order of priority:\n"
-            "1. Look at the MAX_ACTIVATING_TOKENS. If they are all nearly identical, respond with that token. It's okay for them to be variations of the same token. But they must all match.\n"
-            "2. Look at TOKENS_AFTER_MAX_ACTIVATING_TOKEN, along with the TOP_POSITIVE_LOGITS. Try to find a strong, specific pattern or similarity. If you find a pattern (like 'starts with s', 'the ending -ing', 'number 8'), respond with 'say [the pattern]' and end there. Do not force a pattern if there is no specific one. For example, \"unique words\" is not a specific enough pattern, nor is \"foreign words\". If you use \"say [the pattern]\", ALL of the tokens in the TOKENS_AFTER_MAX_ACTIVATING_TOKEN must match this pattern.\n"
-            "3. Look at the TOP_POSITIVE_LOGITS for similarities and describe it very briefly (1-3 words).\n"
-            "4. Look at the TOP_ACTIVATING_TEXTS and make a best guess by describing the broad theme or context, ignoring the max activating tokens.\n\n"
-            "Keep your explanation extremely concise (1-6 words, mostly 1-3 words). Do not add unnecessary phrases like "
-            "'words related to...' or 'concepts related to...' or 'variations of the word...'. Do not mention 'tokens' or 'patterns' "
-            "in your explanation. Only use the 'say [the pattern]' format for the second case above (involving the token after the max activating token), NOT for the other cases. If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n",
+            "You are explaining the behavior of a neuron in a neural network. Your response should be a very concise explanation (1-6 words) that captures what the neuron detects or predicts by finding patterns in lists.\n\n"
+            "To determine the explanation, you are given four lists:\n\n"
+            "- MAX_ACTIVATING_TOKENS, which are the top activating tokens in the top activating texts.\n"
+            "- TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
+            "- TOP_POSITIVE_LOGITS, which are the most likely words or tokens associated with this neuron.\n"
+            "- TOP_ACTIVATING_TEXTS, which are top activating texts.\n\n"
+            "You should look for a pattern by trying the following methods in order. Once you find a pattern, stop and return that pattern. Do not proceed to the later methods.\n"
+            "Method 1: Look at MAX_ACTIVATING_TOKENS. If they share something specific in common, or are all the same token or a variation of the same token (like different cases or conjugations), respond with that token.\n"
+            "Method 2: Look at TOKENS_AFTER_MAX_ACTIVATING_TOKEN. Try to find a specific pattern or similarity in all the tokens. A common pattern is that they all start with the same letter. If you find a pattern (like 's word', 'the ending -ing', 'number 8'), respond with 'say [the pattern]'. You can ignore uppercase/lowercase differences for this.\n"
+            "Method 3: Look at TOP_POSITIVE_LOGITS for similarities and describe it very briefly (1-3 words).\n"
+            "Method 4: Look at TOP_ACTIVATING_TEXTS and make a best guess by describing the broad theme or context, ignoring the max activating tokens.\n\n"
+            "Rules:\n"
+            "- Keep your explanation extremely concise (1-6 words, mostly 1-3 words)."
+            '- Do not add unnecessary phrases like "words related to", "concepts related to", or "variations of the word".'
+            '- Do not mention "tokens" or "patterns" in your explanation.'
+            '- The explanation should be specific. For example, "unique words" is not a specific enough pattern, nor is "foreign words".'
+            "- Remember to use the 'say [the pattern]' when using Method 2 above (pattern found in TOKENS_AFTER_MAX_ACTIVATING_TOKEN)."
+            "- If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n"
+            "Respond by going through each method number until you find one that helps you find an explanation for what this neuron is detecting or predicting. If a method does not help you find an explanation, briefly explain why it does not, then go on to the next method."
+            "Finally, end your response with the method number you used, the reason for your explanation, and then the explanation.",
         )
         few_shot_examples = self.few_shot_example_set.get_examples()
         num_omitted_activation_records = 0
@@ -1026,17 +1033,19 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
 
         # ## debug only
         # import json
+
         # if isinstance(built_prompt, list):
         #     logger.error(json.dumps({"built_prompt": built_prompt}))
         # else:
         #     logger.error(json.dumps({"built_prompt": built_prompt}))
         # import sys
+
         # sys.exit(1)
 
         return built_prompt
 
     def format_top_logits(self, top_positive_logits: List[str]) -> str:
-        return "\n".join([f"{logit}" for logit in top_positive_logits])
+        return "\n".join([f"{logit.strip()}" for logit in top_positive_logits])
 
     def _add_per_neuron_explanation_prompt(
         self,
@@ -1055,31 +1064,35 @@ class MaxActivationAndLogitsExplainer(NeuronExplainer):
 
 Neuron {index + 1}
 
-[START MAX_ACTIVATING_TOKENS]
-
-{self.format_max_activating_tokens(activation_records)}
-
-[END MAX_ACTIVATING_TOKENS]
-
-[START TOP_ACTIVATING_TEXTS]
-
-{self.format_top_activating_texts(activation_records)}
-
-[END TOP_ACTIVATING_TEXTS]
-
-[START TOKENS_AFTER_MAX_ACTIVATING_TOKEN]
+<TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
 
 {self.format_tokens_after_max_activating_token(activation_records)}
 
-[END TOKENS_AFTER_MAX_ACTIVATING_TOKEN]
+</TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
 
-[START TOP_POSITIVE_LOGITS]
+
+<MAX_ACTIVATING_TOKENS>
+
+{self.format_max_activating_tokens(activation_records)}
+
+</MAX_ACTIVATING_TOKENS>
+
+
+<TOP_POSITIVE_LOGITS>
 
 {self.format_top_logits(top_positive_logits) if top_positive_logits else ""}
 
-[END TOP_POSITIVE_LOGITS]
+</TOP_POSITIVE_LOGITS>
+
+
+<TOP_ACTIVATING_TEXTS>
+
+{self.format_top_activating_texts(activation_records)}
+
+</TOP_ACTIVATING_TEXTS>
 
 """
+        # logger.error(f"user_message: {user_message}")
 
         if numbered_list_of_n_explanations is None:
             user_message += f"\nExplanation of neuron {index + 1} behavior: "
@@ -1113,9 +1126,29 @@ Neuron {index + 1}
         if numbered_list_of_n_explanations is None:
             all_explanations = []
             for explanation in completions:
+                # logger.error(f"explanation: {explanation}")
                 if explanation.endswith("."):
                     explanation = explanation[:-1]
-                all_explanations.append(explanation.strip())
+                # Split by "Explanation: " and take the last segment if it exists
+                if "Explanation: " in explanation:
+                    explanation = explanation.split("Explanation: ")[-1]
+                elif "explanation: " in explanation:
+                    explanation = explanation.split("explanation: ")[-1]
+                else:
+                    logger.error(
+                        f"Error parsing response explanation, no explanation string found: {explanation}"
+                    )
+                    all_explanations.append("")
+                    continue
+
+                # filter out any that contain "method [number]" in the explanation
+                if any(f"method {i}" in explanation.lower() for i in range(1, 6)):
+                    logger.error(
+                        "Skipping output that contains 'method' in response text"
+                    )
+                    all_explanations.append("")
+                else:
+                    all_explanations.append(explanation.strip())
             return all_explanations
         else:
             all_explanations = []
@@ -1123,7 +1156,26 @@ Neuron {index + 1}
                 for explanation in _split_numbered_list(completion):
                     if explanation.endswith("."):
                         explanation = explanation[:-1]
-                    all_explanations.append(explanation.strip())
+                    # Split by "Explanation: " and take the last segment if it exists
+                    if "Explanation: " in explanation:
+                        explanation = explanation.split("Explanation: ")[-1]
+                    elif "explanation: " in explanation:
+                        explanation = explanation.split("explanation: ")[-1]
+                    else:
+                        logger.error(
+                            f"Error parsing response explanation, no explanation string found: {explanation}"
+                        )
+                        all_explanations.append("")
+                        continue
+
+                    # filter out any that contain "method [number]" in the explanation
+                    if any(f"method {i}" in explanation.lower() for i in range(1, 6)):
+                        logger.error(
+                            "Skipping output that contains 'method' in response text"
+                        )
+                        all_explanations.append("")
+                    else:
+                        all_explanations.append(explanation.strip())
             return all_explanations
 
 
