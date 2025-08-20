@@ -43,6 +43,7 @@ class FewShotExampleSet(Enum):
     NEWER = "newer"
     TEST = "test"
     LOGITS = "logits"
+    ACTIVATIONS = "activations"
     JL_FINE_TUNED = "jl_fine_tuned"
 
     @classmethod
@@ -58,6 +59,8 @@ class FewShotExampleSet(Enum):
             return ORIGINAL_EXAMPLES
         elif self is FewShotExampleSet.LOGITS:
             return LOGITS_EXAMPLES
+        elif self is FewShotExampleSet.ACTIVATIONS:
+            return ACTIVATIONS_EXAMPLES
         elif self is FewShotExampleSet.NEWER:
             return NEWER_EXAMPLES
         elif self is FewShotExampleSet.TEST:
@@ -748,6 +751,147 @@ LOGITS_EXAMPLES = [
     ),
 ]
 
+
+ACTIVATIONS_EXAMPLES = [
+    Example(
+        activation_records=[
+            ActivationRecord(
+                tokens=[
+                    "The",
+                    " apple",
+                    " and",
+                    " banana",
+                    " are",
+                    " delicious",
+                    " foods",
+                    " that",
+                    " provide",
+                    " essential",
+                    " vitamins",
+                    " and",
+                    " nutrients",
+                    ".",
+                ],
+                activations=[0, 20, 0, 30, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            ),
+            ActivationRecord(
+                tokens=[
+                    "I",
+                    " enjoy",
+                    " eating",
+                    " fresh",
+                    " strawberries",
+                    ",",
+                    " blueberries",
+                    ",",
+                    " and",
+                    " mangoes",
+                    " during",
+                    " the",
+                    " summer",
+                    " months",
+                    ".",
+                ],
+                activations=[0, 0, 0, 0, 25, 0, 35, 0, 0, 15, 0, 0, 0, 0, 0],
+            ),
+        ],
+        first_revealed_activation_indices=[1, 4],
+        explanation="Method 1 succeeds: All MAX_ACTIVATING_TOKENS (banana, blueberries) are fruits. Explanation: fruits",
+    ),
+    Example(
+        activation_records=[
+            ActivationRecord(
+                tokens=[
+                    "It",
+                    " was",
+                    " a",
+                    " beautiful",
+                    " day",
+                    " outside",
+                    " with",
+                    " clear",
+                    " skies",
+                    " and",
+                    " warm",
+                    " sunshine",
+                    ".",
+                ],
+                activations=[0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0],
+            ),
+            ActivationRecord(
+                tokens=[
+                    "And",
+                    " the",
+                    " garden",
+                    " has",
+                    " roses",
+                    " and",
+                    " tulips",
+                    " and",
+                    " daisies",
+                    " and",
+                    " sunflowers",
+                    " blooming",
+                    " together",
+                    ".",
+                ],
+                activations=[9, 0, 0, 0, 0, 6, 0, 5, 0, 5, 0, 0, 0, 0],
+            ),
+        ],
+        first_revealed_activation_indices=[1, 4],
+        explanation='Method 1 succeeds: All MAX_ACTIVATING_TOKENS are the word "and". Explanation: and',
+    ),
+    Example(
+        activation_records=[
+            ActivationRecord(
+                tokens=[
+                    "the",
+                    " civil",
+                    " war",
+                    " was",
+                    " a",
+                    " major",
+                    " topic",
+                    " in",
+                    " history",
+                    " class",
+                    " .",
+                ],
+                activations=[
+                    0,
+                    5,
+                    10,
+                    3,
+                    2,
+                    0,
+                    3,
+                    4,
+                    3,
+                    20,
+                    2,
+                ],
+            ),
+            ActivationRecord(
+                tokens=[
+                    " her",
+                    " professor",
+                    " teaches",
+                    " psychology",
+                    " courses",
+                    " and",
+                    " is",
+                    " a",
+                    " tough",
+                    " grader",
+                    " .",
+                ],
+                activations=[0, 8, 15, 5, 10, 0, 0, 0, 2, 10, 2],
+            ),
+        ],
+        first_revealed_activation_indices=[2, 1],
+        explanation="Method 1 fails: MAX_ACTIVATING_TOKENS (class, teaches) are not all the same token.\nMethod 2 succeeds: The TOP_ACTIVATING_TEXTS are broadly about education. Explanation: education",
+    ),
+]
 
 NEWER_EXAMPLES = [
     Example(
