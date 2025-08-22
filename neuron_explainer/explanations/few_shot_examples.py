@@ -533,7 +533,7 @@ LOGITS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[0, 1],
-        explanation='Method 1 fails: MAX_ACTIVATING_TOKENS (She, enjoy) are not similar tokens.\nMethod 2 succeeds: All TOKENS_AFTER_MAX_ACTIVATING_TOKEN have a pattern in common: they all start with "w". Explanation: say "w" words',
+        explanation='Method 1 fails: MAX_ACTIVATING_TOKENS (She, enjoy) are not similar tokens.\nMethod 2 succeeds: All TOKENS_AFTER_MAX_ACTIVATING_TOKEN have a pattern in common: they all start with "w".\nExplanation: say "w" words',
         top_positive_logits=[
             " walking",
             " WA",
@@ -590,7 +590,7 @@ LOGITS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[1, 4],
-        explanation="Method 1 succeeds: All MAX_ACTIVATING_TOKENS (banana, blueberries) are fruits. Explanation: fruits",
+        explanation="Method 1 succeeds: All MAX_ACTIVATING_TOKENS (banana, blueberries) are fruits.\nExplanation: fruits",
         top_positive_logits=[
             " apple",
             " orange",
@@ -645,7 +645,7 @@ LOGITS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[1, 4],
-        explanation='Method 1 succeeds: All MAX_ACTIVATING_TOKENS are the word "and". Explanation: and',
+        explanation='Method 1 succeeds: All MAX_ACTIVATING_TOKENS are the word "and".\nExplanation: and',
         top_positive_logits=[
             " elephant",
             " guitar",
@@ -735,7 +735,7 @@ LOGITS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[2, 1],
-        explanation="Method 1 fails: MAX_ACTIVATING_TOKENS (war, some) are not all the same token.\nMethod 2 fails: TOKENS_AFTER_MAX_ACTIVATING_TOKEN (was, places) are not all similar tokens and don't have a text pattern in common.\nMethod 3 succeeds: All TOP_POSITIVE_LOGITS are the number 4. Explanation: 4",
+        explanation="Method 1 fails: MAX_ACTIVATING_TOKENS (war, some) are not all the same token.\nMethod 2 fails: TOKENS_AFTER_MAX_ACTIVATING_TOKEN (was, places) are not all similar tokens and don't have a text pattern in common.\nMethod 3 succeeds: All TOP_POSITIVE_LOGITS are the number 4.\nExplanation: 4",
         top_positive_logits=[
             " 4",
             " four",
@@ -796,7 +796,7 @@ ACTIVATIONS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[1, 4],
-        explanation="Method 1 succeeds: All MAX_ACTIVATING_TOKENS (banana, blueberries) are fruits. Explanation: fruits",
+        explanation="Method 1 succeeds: All MAX_ACTIVATING_TOKENS (banana, blueberries) are fruits.\nExplanation: fruits",
     ),
     Example(
         activation_records=[
@@ -839,7 +839,7 @@ ACTIVATIONS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[1, 4],
-        explanation='Method 1 succeeds: All MAX_ACTIVATING_TOKENS are the word "and". Explanation: and',
+        explanation='Method 1 succeeds: All MAX_ACTIVATING_TOKENS are the word "and".\nExplanation: and',
     ),
     Example(
         activation_records=[
@@ -889,8 +889,68 @@ ACTIVATIONS_EXAMPLES = [
             ),
         ],
         first_revealed_activation_indices=[2, 1],
-        explanation="Method 1 fails: MAX_ACTIVATING_TOKENS (class, teaches) are not all the same token.\nMethod 2 succeeds: The TOP_ACTIVATING_TEXTS are broadly about education. Explanation: education",
+        explanation="Method 1 fails: MAX_ACTIVATING_TOKENS (class, teaches) are not all the same token.\nMethod 2 succeeds: The TOP_ACTIVATING_TEXTS are broadly about education.\nExplanation: education",
     ),
+    # # It doesn't seem to work as well when you give a 'fallback' example like this one - the model is too tempted to always use the fallback. So we comment it out.
+    # Example(
+    #     activation_records=[
+    #         ActivationRecord(
+    #             tokens=[
+    #                 "the",
+    #                 " bright",
+    #                 " red",
+    #                 " apple",
+    #                 " fell",
+    #                 " from",
+    #                 " the",
+    #                 " tree",
+    #                 " and",
+    #                 " rolled",
+    #                 " down",
+    #                 " the",
+    #                 " hill",
+    #                 ".",
+    #             ],
+    #             activations=[
+    #                 0,
+    #                 2,
+    #                 1,
+    #                 15,
+    #                 3,
+    #                 0,
+    #                 0,
+    #                 5,
+    #                 2,
+    #                 8,
+    #                 4,
+    #                 0,
+    #                 1,
+    #                 0,
+    #             ],
+    #         ),
+    #         ActivationRecord(
+    #             tokens=[
+    #                 " the",
+    #                 " rocket",
+    #                 " launch",
+    #                 " was",
+    #                 " scheduled",
+    #                 " for",
+    #                 " midnight",
+    #                 " but",
+    #                 " weather",
+    #                 " conditions",
+    #                 " caused",
+    #                 " a",
+    #                 " delay",
+    #                 ".",
+    #             ],
+    #             activations=[0, 3, 12, 1, 2, 0, 8, 1, 4, 6, 2, 0, 5, 0],
+    #         ),
+    #     ],
+    #     first_revealed_activation_indices=[3, 2],
+    #     explanation="Method 1 fails: MAX_ACTIVATING_TOKENS (apple, launch) are not all the same token.\nMethod 2 fails: The TOP_ACTIVATING_TEXTS are completely unrelated with no overlap whatsoever (fruit falling vs space launch).\nSince both fail, I'll return the first token in MAX_ACTIVATING_TOKENS.\nExplanation: apple",
+    # ),
 ]
 
 NEWER_EXAMPLES = [
