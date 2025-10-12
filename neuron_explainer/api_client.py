@@ -158,7 +158,10 @@ class ApiClient:
             raise e
         if self._cache is not None:
             self._cache[key] = response.json()
-        return response.json()
+        response_json = response.json()
+        # print(f"response_json: {response_json}")
+        
+        return response_json
 
 
 if __name__ == "__main__":

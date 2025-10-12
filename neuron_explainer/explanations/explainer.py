@@ -135,6 +135,7 @@ class NeuronExplainer(ABC):
         max_tokens: int = 60,
         temperature: float = 1.0,
         top_p: float = 1.0,
+        reasoning_effort: str | None = None,
         **prompt_kwargs: Any,
     ) -> list[Any]:
         """Generate explanations based on subclass-specific input data."""
@@ -149,6 +150,7 @@ class NeuronExplainer(ABC):
             "max_tokens": max_tokens,
             "temperature": temperature,
             "top_p": top_p,
+            "reasoning_effort": reasoning_effort,
         }
 
         if self.prompt_format == PromptFormat.HARMONY_V4:
@@ -1349,21 +1351,25 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
         # TODO: this is pretty verbose and can probably be shortened
         prompt_builder.add_message(
             Role.SYSTEM,
-            "You are explaining the behavior of a neuron in a neural network. Your response should be a concise explanation (5 to 20 words) that captures what the neuron detects or predicts by finding patterns in lists.\n\n"
+            "You are explaining the behavior of a neuron in a neural network. Your response should be a concise explanation (3 to 20 words) that captures what the neuron detects or predicts by finding patterns in lists.\n\n"
             "To determine the explanation, you are given four lists:\n\n"
-            "- TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
             "- TOP_POSITIVE_LOGITS, which are the most likely words or tokens associated with this neuron.\n"
             "- TOP_ACTIVATING_TEXTS, which are top activating texts.\n\n"
             "- MAX_ACTIVATING_TOKENS, which are the top activating tokens in the top activating texts.\n"
+            "- TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
             "Your job is to explain the behavior of the neuron in a single short phrase. You should look at the lists and find a pattern that helps you explain the behavior of the neuron.\n\n"
             "Rules:\n"
-            "- Keep your explanation extremely concise (5 to 20 words).\n"
+            "- Keep your explanation concise (3 to 20 words).\n"
+            "- The explanation could be a single word, or phrase, or pattern.\n"
+            "- The explanation could be about tokens following or preceding certain tokens.\n"
+            "- The explanation could be about words starting with a sequence.\n"
+            "- Avoid simply listing all the tokens. Instead, try to find patterns.\n"
             '- Just say the pattern itself, and do not start with phrases like "words related to", "concepts related to", or "variations of the word".\n'
             '- Do not start your explanation with "This neuron detects/predicts".\n'
             '- Do not mention "tokens" or "patterns" in your explanation.\n'
+            '- Do not capitalize the first letter unless it is a proper noun.\n'
             '- The explanation should be specific. For example, "unique words" is not a specific enough pattern, nor is "foreign words".\n'
             '- Not ALL top activating texts/tokens have to match the exact same pattern, but a majority should.\n'
-            '- Often the explanation will be a specific word or token pattern, for example "cat", "starts with a certain letter", or "comes after [a certain word or word type]"\n'
             "- If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n"
             "Your response should be exactly a short phrase that explains the behavior of the neuron, not a full sentence.",
         )
@@ -1388,15 +1394,15 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
             return self.make_explanation_prompt(**original_kwargs)
         built_prompt = prompt_builder.build(self.prompt_format)
 
-        # ## debug only
+        ## debug only
         # import json
 
         # if isinstance(built_prompt, list):
         #     logger.error(json.dumps({"built_prompt": built_prompt}))
         # else:
         #     logger.error(json.dumps({"built_prompt": built_prompt}))
-        # import sys
 
+        # import sys
         # sys.exit(1)
 
         return built_prompt
@@ -1418,18 +1424,18 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
     ) -> None:
         user_message = f"""
 
-<TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
-
-{self.format_tokens_after_max_activating_token(activation_records)}
-
-</TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
-
-
 <MAX_ACTIVATING_TOKENS>
 
 {self.format_max_activating_tokens(activation_records)}
 
 </MAX_ACTIVATING_TOKENS>
+
+
+<TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
+
+{self.format_tokens_after_max_activating_token(activation_records)}
+
+</TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
 
 
 <TOP_POSITIVE_LOGITS>
@@ -1519,6 +1525,7 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
         if numbered_list_of_n_explanations is None:
             all_explanations = []
             for explanation in completions:
+                # print(f"explanation: {explanation}")
                 explanation = self.strip_explanation(explanation)
                 if explanation.endswith("."):
                     explanation = explanation[:-1]
@@ -1530,6 +1537,7 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
+                    # print(f"explanation: {explanation}")
                     explanation = self.strip_explanation(explanation)
                     if explanation.endswith("."):
                         explanation = explanation[:-1]
