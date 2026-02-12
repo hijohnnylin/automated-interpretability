@@ -141,9 +141,23 @@ class ApiClient:
             kwargs["model"] = self.model_name
             if json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
+            # Convert max_tokens to max_completion_tokens for newer OpenAI models
+            # that don't support the legacy max_tokens parameter
+            if "max_tokens" in kwargs and "messages" in kwargs:
+                kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
             response = await http_client.post(
                 url, headers=api_http_headers, json=kwargs
             )
+            # Print token usage information if available in the response
+            try:
+                response_data = response.json()
+                if "usage" in response_data:
+                    usage = response_data["usage"]
+                    print(f"Token usage - Prompt: {usage.get('prompt_tokens', 'N/A')}, "
+                        f"Completion: {usage.get('completion_tokens', 'N/A')}, "
+                        f"Total: {usage.get('total_tokens', 'N/A')}")
+            except Exception:
+                pass  # Silently ignore if we can't parse the response or find usage info
         # The response json has useful information but the exception doesn't include it, so print it
         # out then reraise.
         try:
@@ -160,7 +174,6 @@ class ApiClient:
             self._cache[key] = response.json()
         response_json = response.json()
         # print(f"response_json: {response_json}")
-        
         return response_json
 
 

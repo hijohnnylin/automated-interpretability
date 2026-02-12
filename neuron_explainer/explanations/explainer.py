@@ -64,6 +64,45 @@ def _remove_final_period(text: str) -> str:
     return text
 
 
+def _remove_method_from_explanation(explanation: str) -> str:
+    # attempt to remove "method" from the explanation if model outputted this (gpt has a lot of variations of this)
+
+    # case: "beginning. (Method 3)"
+    explanation = re.sub(
+        r"\s*[–—-]?\s*\(\s*[Mm]ethod\s+\d+\s*\)\s*$", "", explanation
+    ).strip()
+
+    # case: "blah  \nMethod 1"
+    explanation = re.sub(r"\s*\n\s*[Mm]ethod\s+\d+.*$", "", explanation).strip()
+
+    # case: "time words. Method 3 – temporal tokens – ts"
+    explanation = re.sub(r"\.\s*[Mm]ethod\s+\d+.*$", "", explanation).strip()
+
+    # case:  "available — Method 1" or "say thought — Method 2, tokens after max are thought‑related"
+    explanation = re.sub(r"\s*[–—-]\s*[Mm]ethod\s+\d+.*$", "", explanation).strip()
+
+    # case: "Crystal (used Method 1)"
+    explanation = re.sub(
+        r"\s*\(\s*used\s+[Mm]ethod\s+\d+\s*\)\s*$", "", explanation
+    ).strip()
+
+    # case: "www (used 1)"
+    explanation = re.sub(r"\s*\(\s*used\s+\d+\s*\)\s*$", "", explanation).strip()
+
+    # case: "homework (3)" - only at the end
+    explanation = re.sub(r"\s*\(\s*\d+\s*\)\s*$", "", explanation).strip()
+
+    # case: "code instructionsMethod 4"
+    explanation = re.sub(r"[Mm]ethod\s+\d+\s*$", "", explanation).strip()
+
+    # case: "non-Latin textMethod: 3"
+    explanation = re.sub(r"[Mm]ethod:\s*\d+\s*$", "", explanation).strip()
+
+    # strip ending "."
+    explanation = explanation.strip(".")
+    return explanation
+
+
 # TODO: should pull from API and/or combine with the HARMONY_V4_MODELS
 class ContextSize(int, Enum):
     TWO_K = 2049
@@ -192,6 +231,18 @@ class NeuronExplainer(ABC):
         used by this instance.
         """
         ...
+
+    def _simple_clean_explanation(explanation: str) -> str:
+        # gpt oss outputs \u202f and \u2003 as space sometimes, so we need to replace it with a normal space
+        explanation = (
+            explanation.replace("\u202f", " ")
+            .replace("\u2003", "")
+            .replace("\u2002", "")
+            .strip()
+        )
+        if explanation.endswith("."):
+            explanation = explanation[:-1]
+        return explanation
 
     def postprocess_explanations(
         self, completions: list[str], prompt_kwargs: dict[str, Any]
@@ -402,6 +453,7 @@ Activations:{format_activation_records(activation_records, max_activation, omit_
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
+                    explanation = self.strip_explanation(explanation)
                     if explanation.startswith(EXPLANATION_PREFIX):
                         explanation = explanation[len(EXPLANATION_PREFIX) :]
                     all_explanations.append(explanation.strip())
@@ -615,11 +667,10 @@ Activations:{format_activation_records(activation_records, max_activation, omit_
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
+                    explanation = self.strip_explanation(explanation)
                     if explanation.startswith(EXPLANATION_PREFIX_LOGITS):
                         explanation = explanation[len(EXPLANATION_PREFIX_LOGITS) :]
-                    if explanation.endswith("."):
-                        explanation = explanation[:-1]
-                    all_explanations.append(explanation.strip())
+                    all_explanations.append(explanation)
             return all_explanations
 
 
@@ -807,11 +858,10 @@ Activations:{format_activation_records(activation_records, max_activation, omit_
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
+                    explanation = self.strip_explanation(explanation)
                     if explanation.startswith(EXPLANATION_PREFIX_LOGITS):
                         explanation = explanation[len(EXPLANATION_PREFIX_LOGITS) :]
-                    if explanation.endswith("."):
-                        explanation = explanation[:-1]
-                    all_explanations.append(explanation.strip())
+                    all_explanations.append(explanation)
             return all_explanations
 
 
@@ -1132,9 +1182,7 @@ Neuron {index + 1}
         if numbered_list_of_n_explanations is None:
             all_explanations = []
             for explanation in completions:
-                # logger.error(f"explanation: {explanation}")
-                if explanation.endswith("."):
-                    explanation = explanation[:-1]
+                explanation = self.strip_explanation(explanation)
                 # Split by "Explanation: " and take the last segment if it exists
                 if "Explanation: " in explanation:
                     explanation = explanation.split("Explanation: ")[-1]
@@ -1147,19 +1195,13 @@ Neuron {index + 1}
                     all_explanations.append("")
                     continue
 
-                # filter out any that contain "method [number]" in the explanation
-                if any(f"method {i}" in explanation.lower() for i in range(1, 6)):
-                    logger.error(
-                        "Skipping output that contains 'method' in response text"
-                    )
-                    all_explanations.append("")
-                else:
-                    all_explanations.append(explanation.strip())
+                all_explanations.append(_remove_method_from_explanation(explanation))
             return all_explanations
         else:
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
+                    explanation = self.strip_explanation(explanation)
                     if explanation.endswith("."):
                         explanation = explanation[:-1]
                     # Split by "Explanation: " and take the last segment if it exists
@@ -1174,16 +1216,10 @@ Neuron {index + 1}
                         all_explanations.append("")
                         continue
 
-                    # filter out any that contain "method [number]" in the explanation
-                    if any(f"method {i}" in explanation.lower() for i in range(1, 6)):
-                        logger.error(
-                            "Skipping output that contains 'method' in response text"
-                        )
-                        all_explanations.append("")
-                    else:
-                        all_explanations.append(explanation.strip())
+                    all_explanations.append(
+                        _remove_method_from_explanation(explanation)
+                    )
             return all_explanations
-
 
 
 class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
@@ -1192,12 +1228,12 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
     It shows the model both activations and top positive logits.
     This explainer is expected to be used for the last 1/3 of layers in a model, since it has heavy focus on predicting the next token.
     This explainer assumes you are using a more intelligent model (eg Gemini-2.0-Flash or above), since it gives more general instructions.
-    
+
     Method:
      - We show the top activating token in the context of each snippet
      - We show the top positive logits (and explain what this means)
      - We ask the model, in a single short phrase, to explain the behavior of this neuron.
-    
+
     See make_explanation_prompt below for the full prompt.
 
     We mostly tested using this explainer with Gemini-2.0-Flash.
@@ -1367,9 +1403,9 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
             '- Just say the pattern itself, and do not start with phrases like "words related to", "concepts related to", or "variations of the word".\n'
             '- Do not start your explanation with "This neuron detects/predicts".\n'
             '- Do not mention "tokens" or "patterns" in your explanation.\n'
-            '- Do not capitalize the first letter unless it is a proper noun.\n'
+            "- Do not capitalize the first letter unless it is a proper noun.\n"
             '- The explanation should be specific. For example, "unique words" is not a specific enough pattern, nor is "foreign words".\n'
-            '- Not ALL top activating texts/tokens have to match the exact same pattern, but a majority should.\n'
+            "- Not ALL top activating texts/tokens have to match the exact same pattern, but a majority should.\n"
             "- If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n"
             "Your response should be exactly a short phrase that explains the behavior of the neuron, not a full sentence.",
         )
@@ -1454,7 +1490,9 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
 """
         # logger.error(f"user_message: {user_message}")
 
-        message_requesting_explanation = "\nExplain the neuron above with a word or phrase, not a complete sentence."
+        message_requesting_explanation = (
+            "\nExplain the neuron above with a word or phrase, not a complete sentence."
+        )
         if numbered_list_of_n_explanations is None:
             user_message += message_requesting_explanation
             assistant_message = ""
@@ -1471,7 +1509,7 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
             )
             if explanation is not None:
                 prompt_builder.add_message(Role.ASSISTANT, f"{explanation}")
-    
+
     def strip_explanation(self, explanation: str) -> str:
         replaced = explanation
         # Remove common prefixes
@@ -1493,13 +1531,13 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
             "The tokens ",
             "This neuron detects",
             "This neuron predicts",
-            "This neuron activates for"
+            "This neuron activates for",
         ]
         for prefix in prefixes_to_remove:
             if replaced.startswith(prefix):
-                replaced = replaced[len(prefix):]
+                replaced = replaced[len(prefix) :]
                 break
-        
+
         # Remove common suffixes
         suffixes_to_remove = [
             " or related terms",
@@ -1511,8 +1549,9 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
         ]
         for suffix in suffixes_to_remove:
             if replaced.endswith(suffix):
-                replaced = replaced[:-len(suffix)]
+                replaced = replaced[: -len(suffix)]
                 break
+        replaced = self._simple_clean_explanation(replaced)
         return replaced.strip()
 
     def postprocess_explanations(
@@ -1529,7 +1568,7 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
                 explanation = self.strip_explanation(explanation)
                 if explanation.endswith("."):
                     explanation = explanation[:-1]
-                
+
                 all_explanations.append(explanation)
                 continue
             return all_explanations
@@ -1809,9 +1848,8 @@ Neuron {index + 1}
         if numbered_list_of_n_explanations is None:
             all_explanations = []
             for explanation in completions:
+                explanation = self.strip_explanation(explanation)
                 # logger.error(f"explanation: {explanation}")
-                if explanation.endswith("."):
-                    explanation = explanation[:-1]
                 # Split by "Explanation: " and take the last segment if it exists
                 if "Explanation: " in explanation:
                     explanation = explanation.split("Explanation: ")[-1]
@@ -1824,21 +1862,13 @@ Neuron {index + 1}
                     all_explanations.append("")
                     continue
 
-                # filter out any that contain "method [number]" in the explanation
-                if any(f"method {i}" in explanation.lower() for i in range(1, 6)):
-                    logger.error(
-                        "Skipping output that contains 'method' in response text"
-                    )
-                    all_explanations.append("")
-                else:
-                    all_explanations.append(explanation.strip())
+                all_explanations.append(_remove_method_from_explanation(explanation))
             return all_explanations
         else:
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
-                    if explanation.endswith("."):
-                        explanation = explanation[:-1]
+                    explanation = self.strip_explanation(explanation)
                     # Split by "Explanation: " and take the last segment if it exists
                     if "Explanation: " in explanation:
                         explanation = explanation.split("Explanation: ")[-1]
@@ -1851,14 +1881,9 @@ Neuron {index + 1}
                         all_explanations.append("")
                         continue
 
-                    # filter out any that contain "method [number]" in the explanation
-                    if any(f"method {i}" in explanation.lower() for i in range(1, 6)):
-                        logger.error(
-                            "Skipping output that contains 'method' in response text"
-                        )
-                        all_explanations.append("")
-                    else:
-                        all_explanations.append(explanation.strip())
+                    all_explanations.append(
+                        _remove_method_from_explanation(explanation)
+                    )
             return all_explanations
 
 
@@ -1991,6 +2016,7 @@ class TokenSpaceRepresentationExplainer(NeuronExplainer):
             all_explanations = []
             for completion in completions:
                 for explanation in _split_numbered_list(completion):
+                    explanation = self.strip_explanation(explanation)
                     if explanation.startswith(EXPLANATION_PREFIX):
                         explanation = explanation[len(EXPLANATION_PREFIX) :]
                     all_explanations.append(explanation.strip())
