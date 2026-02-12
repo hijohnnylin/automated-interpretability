@@ -232,6 +232,7 @@ class NeuronExplainer(ABC):
         """
         ...
 
+    @staticmethod
     def _simple_clean_explanation(explanation: str) -> str:
         # gpt oss outputs \u202f and \u2003 as space sometimes, so we need to replace it with a normal space
         explanation = (
