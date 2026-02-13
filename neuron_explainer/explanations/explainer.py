@@ -6,7 +6,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Optional, Sequence, Union, List
+from typing import Any, List, Optional, Sequence, Union
 
 import numpy as np
 
@@ -1525,6 +1525,320 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
 
 </TOP_POSITIVE_LOGITS>
 
+
+<TOP_ACTIVATING_TEXTS>
+
+{self.format_top_activating_texts(activation_records)}
+
+</TOP_ACTIVATING_TEXTS>
+
+"""
+        # logger.error(f"user_message: {user_message}")
+
+        message_requesting_explanation = (
+            "\nExplain the neuron above with a word or phrase, not a complete sentence."
+        )
+        if numbered_list_of_n_explanations is None:
+            user_message += message_requesting_explanation
+            assistant_message = ""
+            prompt_builder.add_message(Role.USER, user_message)
+
+            if explanation is not None:
+                assistant_message += f"{explanation}"
+            if assistant_message:
+                prompt_builder.add_message(Role.ASSISTANT, assistant_message)
+        else:
+            prompt_builder.add_message(
+                Role.USER,
+                message_requesting_explanation,
+            )
+            if explanation is not None:
+                prompt_builder.add_message(Role.ASSISTANT, f"{explanation}")
+
+    def postprocess_explanations(
+        self, completions: list[str], prompt_kwargs: dict[str, Any]
+    ) -> list[Any]:
+        """Postprocess the explanations returned by the API"""
+        numbered_list_of_n_explanations = prompt_kwargs.get(
+            "numbered_list_of_n_explanations"
+        )
+        if numbered_list_of_n_explanations is None:
+            all_explanations = []
+            for explanation in completions:
+                # print(f"explanation: {explanation}")
+                explanation = self.strip_explanation(explanation)
+                if explanation.endswith("."):
+                    explanation = explanation[:-1]
+
+                all_explanations.append(explanation)
+                continue
+            return all_explanations
+        else:
+            all_explanations = []
+            for completion in completions:
+                for explanation in _split_numbered_list(completion):
+                    # print(f"explanation: {explanation}")
+                    explanation = self.strip_explanation(explanation)
+                    if explanation.endswith("."):
+                        explanation = explanation[:-1]
+                    all_explanations.append(explanation)
+                    continue
+            return all_explanations
+
+
+class PythonCodeExplainer(NeuronExplainer):
+    """
+    This explainer is used to explain OpenAI's CircuitGPT-python neurons, a sparse, interpretable model that is trained on Python code. (https://huggingface.co/openai/circuit-sparsity/tree/main)
+    We need this because other explainers just end up saying generic variations of "code" or "symbols", which is not helpful.
+
+    Method:
+     - We tell the model the context that it's Python code and that it should try to explain what specifically this neuron does in the Python code.
+     - We ask the model specifically to avoid generic "code" or "symbols" explanations.
+     - We show the top activating token in the context of each snippet
+     - We show the model the snippets of code, with the top activating token highlighted between the symbol ★.
+     - By default we show more tokens around the max activating token because code is dense.
+
+    This explainer assumes you are using a more intelligent model (eg Gemini-2.0-Flash or above), since it gives more general instructions.
+
+    See make_explanation_prompt below for the full prompt.
+
+    We mostly tested using this explainer with Gemini-2.5-Flash-Lite on Low thinking.
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        prompt_format: PromptFormat = PromptFormat.HARMONY_V4,
+        context_size: ContextSize = ContextSize.ONETWENTYEIGHT_K,
+        few_shot_example_set: FewShotExampleSet = FewShotExampleSet.LOGITS,
+        tokens_around_max_activating_token: int = 96,
+        repeat_non_zero_activations: bool = False,
+        max_concurrent: Optional[int] = 10,
+        cache: bool = False,
+        base_api_url: str = ApiClient.BASE_API_URL,
+        override_api_key: str | None = None,
+    ):
+        super().__init__(
+            model_name=model_name,
+            prompt_format=prompt_format,
+            max_concurrent=max_concurrent,
+            cache=cache,
+            base_api_url=base_api_url,
+            override_api_key=override_api_key,
+        )
+        self.context_size = context_size
+        self.few_shot_example_set = few_shot_example_set
+        self.repeat_non_zero_activations = repeat_non_zero_activations
+        self.tokens_around_max_activating_token = tokens_around_max_activating_token
+
+    def format_tokens_after_max_activating_token(
+        self, activation_records: Sequence[ActivationRecord]
+    ) -> str:
+        """
+        Format the tokens immediately after the max activating token.
+        """
+        formatted_texts = []
+        for record in activation_records:
+            tokens = record.tokens
+            activations = record.activations
+            max_activation_index = activations.index(max(activations))
+            # Only get the first token after the max activating token
+            if max_activation_index + 1 < len(tokens):
+                token_after_max_activating_token = (
+                    tokens[max_activation_index + 1].replace("\n", "").strip()
+                )
+                formatted_texts.append(f"{token_after_max_activating_token}")
+            else:
+                # Handle case where max activation is the last token
+                formatted_texts.append("")
+        return "\n".join(formatted_texts)
+
+    def format_max_activating_tokens(
+        self, activation_records: Sequence[ActivationRecord]
+    ) -> str:
+        """
+        Format the max activating tokens.
+        """
+        formatted_tokens = []
+        for record in activation_records:
+            tokens = record.tokens
+            activations = record.activations
+            max_activation_index = activations.index(max(activations))
+            max_activating_token = (
+                tokens[max_activation_index].replace("\n", "").strip()
+            )
+            formatted_tokens.append(f"{max_activating_token}")
+        return "\n".join(formatted_tokens)
+
+    def format_top_activating_texts(
+        self, activation_records: Sequence[ActivationRecord]
+    ) -> str:
+        """
+        Format activation records into a bullet point list of texts, with each text trimmed to
+        8 tokens to the left and right of the maximum activating token. Replace line breaks with two spaces.
+        """
+        formatted_texts = []
+
+        for record in activation_records:
+            tokens = record.tokens
+            activations = record.activations
+
+            # Find the index of the maximum activation
+            max_activation_index = activations.index(max(activations))
+
+            # Calculate the start and end indices for the window
+            start_index = max(
+                0, max_activation_index - self.tokens_around_max_activating_token
+            )
+            end_index = min(
+                len(tokens),
+                max_activation_index + self.tokens_around_max_activating_token + 1,
+            )  # +1 to include the token at end_index-1
+
+            # Create the trimmed text with the max activating token surrounded by ★
+            trimmed_tokens = (
+                tokens[start_index:max_activation_index]
+                + [f"★{tokens[max_activation_index]}★"]
+                + tokens[max_activation_index + 1 : end_index]
+            )
+
+            trimmed_text = "".join(trimmed_tokens).replace("\n", "  ")
+            formatted_texts.append(f"{trimmed_text}")
+
+        return "\n".join(formatted_texts)
+
+    def make_explanation_prompt(
+        self, **kwargs: Any
+    ) -> Union[str, list[HarmonyMessage]]:
+        original_kwargs = kwargs.copy()
+        all_activation_records: Sequence[ActivationRecord] = kwargs.pop(
+            "all_activation_records"
+        )
+        # Replace all ▁ characters in tokens with spaces
+        processed_activation_records = []
+        for record in all_activation_records:
+            # Create a new ActivationRecord with processed tokens
+            processed_tokens = [token.replace("▁", " ") for token in record.tokens]
+            processed_activation_records.append(
+                ActivationRecord(
+                    tokens=processed_tokens, activations=record.activations
+                )
+            )
+
+        # Use the processed records for the rest of the function
+        all_activation_records = processed_activation_records
+        max_activation: float = kwargs.pop("max_activation")
+        top_positive_logits: List[str] = kwargs.pop("top_positive_logits")
+
+        # Replace all ▁ characters in top_positive_logits with spaces
+        processed_top_positive_logits = [
+            logit.replace("▁", " ").replace("\n", "").strip()
+            for logit in top_positive_logits
+        ]
+        top_positive_logits = processed_top_positive_logits
+        kwargs.setdefault("numbered_list_of_n_explanations", None)
+        numbered_list_of_n_explanations: Optional[int] = kwargs.pop(
+            "numbered_list_of_n_explanations"
+        )
+        if numbered_list_of_n_explanations is not None:
+            assert numbered_list_of_n_explanations > 0, numbered_list_of_n_explanations
+        # This parameter lets us dynamically shrink the prompt if our initial attempt to create it
+        # results in something that's too long. It's only implemented for the 4k context size.
+        kwargs.setdefault("omit_n_activation_records", 0)
+        omit_n_activation_records: int = kwargs.pop("omit_n_activation_records")
+        max_tokens_for_completion: int = kwargs.pop("max_tokens_for_completion")
+        assert not kwargs, f"Unexpected kwargs: {kwargs}"
+
+        prompt_builder = PromptBuilder()
+        # TODO: this is pretty verbose and can probably be shortened
+        prompt_builder.add_message(
+            Role.SYSTEM,
+            "You are explaining the behavior of a neuron in a neural network. This specific neuron is trained on Python code. Your response should be a concise explanation (3 to 20 words) that captures what the neuron detects or predicts by finding patterns in lists.\n\n"
+            "To determine the explanation, you are given three lists:\n\n"
+            "- MAX_ACTIVATING_TOKENS, which are the top activating tokens in the top activating texts.\n"
+            "- TOKENS_AFTER_MAX_ACTIVATING_TOKEN, which are the tokens immediately after the max activating token.\n"
+            "- TOP_ACTIVATING_TEXTS, which are top activating texts (snippets of Python code). The top activating token is highlighted between the symbol ★. For example, if the top activating token is the beginning parenthesis character '(', the snippet would be 'print★(★\"Hello world\")'. \n\n"
+            "Your job is to explain the behavior of the neuron in a single short phrase. You should look at the lists and find a pattern that helps you explain the behavior of the neuron.\n\n"
+            "Rules:\n"
+            "- Keep your explanation concise (3 to 20 words).\n"
+            '- The explanation should be related a specific Python concept, like a specific code-related pattern or symbol. For example, it could be a loop, or keyword, a symbol, or a part of code like "second argument of a method definition".\n'
+            "- The explanation could be about tokens following or preceding certain tokens.\n"
+            "- Avoid simply listing all the tokens. Instead, try to find patterns.\n"
+            '- Just say the pattern itself, and do not start with phrases like "words related to", "concepts related to", or "variations of the word".\n'
+            '- Do not start your explanation with "This neuron detects/predicts".\n'
+            '- Do not mention "tokens" or "patterns" in your explanation.\n'
+            "- Do not capitalize the first letter unless it is a proper noun.\n"
+            '- The explanation should be specific. For example, "code snippets" is not a specific enough pattern, nor is "various symbols".\n'
+            "- Not ALL top activating texts/tokens have to match the exact same pattern, but a majority should.\n"
+            "- If you absolutely cannot make any guesses, return the first token in MAX_ACTIVATING_TOKENS.\n\n"
+            "Your response should be exactly a short phrase that explains the behavior of the neuron, not a full sentence.",
+        )
+        num_omitted_activation_records = 0
+        self._add_per_neuron_explanation_prompt(
+            prompt_builder,
+            all_activation_records,
+            0,
+            max_activation,
+            numbered_list_of_n_explanations=numbered_list_of_n_explanations,
+            top_positive_logits=top_positive_logits,
+            explanation=None,
+        )
+        # If the prompt is too long *and* we omitted the specified number of activation records, try
+        # again, omitting one more. (If we didn't make the specified number of omissions, we're out
+        # of opportunities to omit records, so we just return the prompt as-is.)
+        if (
+            self._prompt_is_too_long(prompt_builder, max_tokens_for_completion)
+            and num_omitted_activation_records == omit_n_activation_records
+        ):
+            original_kwargs["omit_n_activation_records"] = omit_n_activation_records + 1
+            return self.make_explanation_prompt(**original_kwargs)
+        built_prompt = prompt_builder.build(self.prompt_format)
+
+        # # debug only
+        # import json
+
+        # if isinstance(built_prompt, list):
+        #     print(json.dumps({"built_prompt": built_prompt}))
+        # else:
+        #     print(json.dumps({"built_prompt": built_prompt}))
+
+        # import sys
+        # import time
+
+        # time.sleep(5)
+
+        # sys.exit(1)
+
+        return built_prompt
+
+    def format_top_logits(self, top_positive_logits: List[str]) -> str:
+        return "\n".join([f"{logit.strip()}" for logit in top_positive_logits])
+
+    def _add_per_neuron_explanation_prompt(
+        self,
+        prompt_builder: PromptBuilder,
+        activation_records: Sequence[ActivationRecord],
+        index: int,
+        max_activation: float,
+        top_positive_logits: Optional[List[str]],
+        # When set, this indicates that the prompt should solicit a numbered list of the given
+        # number of explanations, rather than a single explanation.
+        numbered_list_of_n_explanations: Optional[int],
+        explanation: Optional[str],  # None means this is the end of the full prompt.
+    ) -> None:
+        user_message = f"""
+
+<MAX_ACTIVATING_TOKENS>
+
+{self.format_max_activating_tokens(activation_records)}
+
+</MAX_ACTIVATING_TOKENS>
+
+<TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
+
+{self.format_tokens_after_max_activating_token(activation_records)}
+
+</TOKENS_AFTER_MAX_ACTIVATING_TOKEN>
 
 <TOP_ACTIVATING_TEXTS>
 

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: neuron_explainer
-Version: 0.0.18
+Version: 0.0.17
 Home-page: 
 Author: OpenAI, Neuronpedia
 Requires-Python: >=3.9
