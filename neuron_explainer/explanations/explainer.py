@@ -245,6 +245,50 @@ class NeuronExplainer(ABC):
             explanation = explanation[:-1]
         return explanation
 
+    def strip_explanation(self, explanation: str) -> str:
+        replaced = explanation
+        # Remove common prefixes
+        prefixes_to_remove = [
+            "References to ",
+            "Associated with ",
+            "Relates to ",
+            "Relating to ",
+            "Occurrences of ",
+            "Mentions of ",
+            "Related to ",
+            "Words related to ",
+            "Concepts related to ",
+            "Variations of the word ",
+            "Words indicating ",
+            "Words ",
+            "The word ",
+            "The phrase ",
+            "The tokens ",
+            "This neuron detects",
+            "This neuron predicts",
+            "This neuron activates for",
+        ]
+        for prefix in prefixes_to_remove:
+            if replaced.startswith(prefix):
+                replaced = replaced[len(prefix) :]
+                break
+
+        # Remove common suffixes
+        suffixes_to_remove = [
+            " or related terms",
+            " and related terms",
+            " or its variations",
+            " and its variations",
+            " or related forms",
+            " and related forms",
+        ]
+        for suffix in suffixes_to_remove:
+            if replaced.endswith(suffix):
+                replaced = replaced[: -len(suffix)]
+                break
+        replaced = self._simple_clean_explanation(replaced)
+        return replaced.strip()
+
     def postprocess_explanations(
         self, completions: list[str], prompt_kwargs: dict[str, Any]
     ) -> list[Any]:
@@ -1510,50 +1554,6 @@ class MaxActivationAndLogitsGeneralExplainer(NeuronExplainer):
             )
             if explanation is not None:
                 prompt_builder.add_message(Role.ASSISTANT, f"{explanation}")
-
-    def strip_explanation(self, explanation: str) -> str:
-        replaced = explanation
-        # Remove common prefixes
-        prefixes_to_remove = [
-            "References to ",
-            "Associated with ",
-            "Relates to ",
-            "Relating to ",
-            "Occurrences of ",
-            "Mentions of ",
-            "Related to ",
-            "Words related to ",
-            "Concepts related to ",
-            "Variations of the word ",
-            "Words indicating ",
-            "Words ",
-            "The word ",
-            "The phrase ",
-            "The tokens ",
-            "This neuron detects",
-            "This neuron predicts",
-            "This neuron activates for",
-        ]
-        for prefix in prefixes_to_remove:
-            if replaced.startswith(prefix):
-                replaced = replaced[len(prefix) :]
-                break
-
-        # Remove common suffixes
-        suffixes_to_remove = [
-            " or related terms",
-            " and related terms",
-            " or its variations",
-            " and its variations",
-            " or related forms",
-            " and related forms",
-        ]
-        for suffix in suffixes_to_remove:
-            if replaced.endswith(suffix):
-                replaced = replaced[: -len(suffix)]
-                break
-        replaced = self._simple_clean_explanation(replaced)
-        return replaced.strip()
 
     def postprocess_explanations(
         self, completions: list[str], prompt_kwargs: dict[str, Any]
